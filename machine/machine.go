@@ -73,6 +73,31 @@ func (m *machine) CallFunction(fun *ast.FuncLit, args []ast.Expr) (*Node, error)
 	})
 }
 
+func (m *machine) AstNodeToNode(lit ast.Node) *Node {
+	var val any
+	switch n := lit.(type) {
+	case *ast.BasicLit:
+		switch n.Kind {
+		case token.FLOAT, token.INT:
+			val, _ = strconv.ParseFloat(n.Value, 64)
+		case token.CHAR, token.STRING:
+			val = n.Value
+		}
+		return &Node{
+			Kind:  n.Kind,
+			Value: val,
+		}
+	case *ast.FuncLit:
+		return &Node{
+			Kind:    token.FUNC,
+			Value:   val,
+			Context: m.Context,
+		}
+	}
+
+	return nil
+}
+
 // Evaluate evaluates a node and produces a literal
 func (m *machine) Evaluate(node ast.Node) (*Node, error) {
 	var err error
@@ -81,14 +106,11 @@ func (m *machine) Evaluate(node ast.Node) (*Node, error) {
 
 	switch n := node.(type) {
 	case *ast.BasicLit:
-		lit = &Node{
-			Node: node,
-			Kind: ELEM_LIT,
-		}
+		lit = m.AstNodeToNode(n)
 	case *ast.FuncLit:
 		lit = &Node{
-			Node:    node,
-			Kind:    ELEM_FUN,
+			Kind:    token.FUNC,
+			Value:   n,
 			Context: m.Context,
 		}
 	case *ast.Ident:
@@ -106,16 +128,10 @@ func (m *machine) Evaluate(node ast.Node) (*Node, error) {
 		lit, err = m.Evaluate(n.X)
 	case *ast.BinaryExpr:
 		res, err = m.evalBinary(n)
-		lit = &Node{
-			Node: res,
-			Kind: ELEM_LIT,
-		}
+		lit = m.AstNodeToNode(res)
 	case *ast.UnaryExpr:
 		res, err = m.evalUnary(n)
-		lit = &Node{
-			Node: res,
-			Kind: ELEM_LIT,
-		}
+		lit = m.AstNodeToNode(res)
 	case *ast.IncDecStmt:
 		var tok token.Token
 		if n.Tok == token.INC {
@@ -163,7 +179,7 @@ func (m *machine) evalAssign(stmt *ast.AssignStmt) error {
 		if err != nil {
 			break
 		}
-		err = m.Context.Update(name, LitToNode(lit))
+		err = m.Context.Update(name, m.AstNodeToNode(lit))
 		if err != nil {
 			return err
 		}
@@ -176,7 +192,7 @@ func (m *machine) evalAssign(stmt *ast.AssignStmt) error {
 		if err != nil {
 			break
 		}
-		err = m.Context.Update(name, LitToNode(lit))
+		err = m.Context.Update(name, m.AstNodeToNode(lit))
 		if err != nil {
 			return err
 		}
@@ -189,7 +205,7 @@ func (m *machine) evalAssign(stmt *ast.AssignStmt) error {
 		if err != nil {
 			break
 		}
-		err = m.Context.Update(name, LitToNode(lit))
+		err = m.Context.Update(name, m.AstNodeToNode(lit))
 		if err != nil {
 			return err
 		}
@@ -202,7 +218,7 @@ func (m *machine) evalAssign(stmt *ast.AssignStmt) error {
 		if err != nil {
 			break
 		}
-		err = m.Context.Update(name, LitToNode(lit))
+		err = m.Context.Update(name, m.AstNodeToNode(lit))
 		if err != nil {
 			return err
 		}
@@ -215,7 +231,7 @@ func (m *machine) evalAssign(stmt *ast.AssignStmt) error {
 		if err != nil {
 			break
 		}
-		err = m.Context.Update(name, LitToNode(lit))
+		err = m.Context.Update(name, m.AstNodeToNode(lit))
 		if err != nil {
 			return err
 		}
@@ -260,14 +276,16 @@ func (m *machine) evalDecl(n *ast.DeclStmt) error {
 }
 
 func (m *machine) evalIf(n *ast.IfStmt) (*Node, error) {
-	var res *Node
+	oldContext := m.Context
+	m.Context = m.Context.NewChildContext()
 
 	cond, err := m.Evaluate(n.Cond)
 	if err != nil {
 		return nil, errors.Errorf("cannot eval if cond %w", err)
 	}
 
-	if isTruthy(cond.Node.(*ast.BasicLit)) {
+	var res *Node
+	if isTruthy(cond) {
 		res, err = m.Evaluate(n.Body)
 	} else if n.Else != nil {
 		res, err = m.Evaluate(n.Else)
@@ -277,22 +295,26 @@ func (m *machine) evalIf(n *ast.IfStmt) (*Node, error) {
 		return nil, errors.WrapPrefix(err, "cannot eval if body", 10)
 	}
 
+	m.Context = oldContext
 	return res, nil
 }
 
 func (m *machine) evalFor(n *ast.ForStmt) (*Node, error) {
-	var res *Node
+	oldContext := m.Context
+	m.Context = m.Context.NewChildContext()
+
 	_, err := m.Evaluate(n.Init)
 	if err != nil {
 		return nil, errors.WrapPrefix(err, "cannot eval for init block", 10)
 	}
 
+	var res *Node
 	for {
 		cond, err := m.Evaluate(n.Cond)
 		if err != nil {
 			return nil, errors.WrapPrefix(err, "cannot eval for cond block", 10)
 		}
-		if !isTruthy(cond.Node.(*ast.BasicLit)) {
+		if !isTruthy(cond) {
 			break
 		}
 
@@ -311,6 +333,7 @@ func (m *machine) evalFor(n *ast.ForStmt) (*Node, error) {
 		}
 	}
 
+	m.Context = oldContext
 	return res, nil
 }
 
@@ -318,7 +341,7 @@ func (m *machine) applyFunction(fun *Node, args []ast.Expr) (*Node, error) {
 	oldContext := m.Context
 	m.Context = fun.Context.NewChildContext()
 
-	n := fun.Node.(*ast.FuncLit)
+	n := fun.Value.(*ast.FuncLit)
 	// populate arguments
 	params := n.Type.Params
 	for i, arg := range args {
@@ -364,8 +387,8 @@ func (m *machine) evalFunctionCall(fun ast.Expr, args []ast.Expr) (*Node, error)
 		res, err = m.applyFunction(fun, args)
 	case *ast.FuncLit:
 		res, err = m.applyFunction(&Node{
-			Node:    fun,
-			Kind:    ELEM_FUN,
+			Kind:    token.FUNC,
+			Value:   fun,
 			Context: m.Context,
 		}, args)
 
@@ -382,13 +405,11 @@ func (m *machine) evalUnary(expr *ast.UnaryExpr) (*ast.BasicLit, error) {
 		return nil, err
 	}
 
-	X := node.Node.(*ast.BasicLit)
-
-	if X.Kind != token.INT && X.Kind != token.FLOAT {
-		return nil, errors.Errorf("unsupported operand types %s", X.Kind)
+	if node.Kind != token.INT && node.Kind != token.FLOAT {
+		return nil, errors.Errorf("unsupported operand types %s", node.Kind)
 	}
 
-	operand, _ := strconv.ParseFloat(X.Value, 64)
+	operand := node.Value.(float64)
 	var r float64
 	switch expr.Op {
 	case token.SUB:
@@ -416,16 +437,17 @@ func (m *machine) evalBinary(expr *ast.BinaryExpr) (*ast.BasicLit, error) {
 		return nil, err
 	}
 
-	X := nodeX.Node.(*ast.BasicLit)
-	Y := nodeY.Node.(*ast.BasicLit)
-
-	if (X.Kind != token.INT && X.Kind != token.FLOAT) ||
-		(Y.Kind != token.INT && Y.Kind != token.FLOAT) {
-		return nil, errors.Errorf("unsupported operand types %s %s", X.Kind, Y.Kind)
+	if (nodeX.Kind != token.INT && nodeX.Kind != token.FLOAT) ||
+		(nodeY.Kind != token.INT && nodeY.Kind != token.FLOAT) {
+		return nil, errors.Errorf(
+			"unsupported operand types %s %s",
+			nodeX.Kind,
+			nodeY.Kind,
+		)
 	}
 
-	operand1, _ := strconv.ParseFloat(X.Value, 64)
-	operand2, _ := strconv.ParseFloat(Y.Value, 64)
+	operand1 := nodeX.Value.(float64)
+	operand2 := nodeY.Value.(float64)
 	var r float64
 	switch expr.Op {
 	case token.ADD: // +
@@ -504,15 +526,17 @@ func isTruthyFloat(val float64) bool {
 	return false
 }
 
-func isTruthy(lit *ast.BasicLit) bool {
-	switch lit.Kind {
+func isTruthy(node *Node) bool {
+	switch node.Kind {
 	case token.FLOAT, token.INT:
-		val, _ := strconv.ParseFloat(lit.Value, 64)
+		val, _ := node.Value.(float64)
 		return isTruthyFloat(val)
 	case token.STRING:
-		if lit.Value == "" {
+		if node.Value.(string) == "" {
 			return false
 		}
+		return true
+	case token.FUNC:
 		return true
 	}
 	return false
