@@ -5,9 +5,9 @@ import (
 	"go/parser"
 	"go/token"
 	"reflect"
-	"strconv"
 
 	"github.com/go-errors/errors"
+	"github.com/podocarp/goscript/kind"
 )
 
 type machine struct {
@@ -39,11 +39,6 @@ func NewMachine(opts ...MachineOpts) *machine {
 	return m
 }
 
-func (m *machine) Reset() {
-	m.Context.Reset()
-	m.returnFlag = false
-}
-
 func (m *machine) ParseAndEval(stmt string) (*Node, error) {
 	node, err := m.Parse(stmt)
 	if err != nil {
@@ -73,31 +68,6 @@ func (m *machine) CallFunction(fun *ast.FuncLit, args []ast.Expr) (*Node, error)
 	})
 }
 
-func (m *machine) AstNodeToNode(lit ast.Node) *Node {
-	var val any
-	switch n := lit.(type) {
-	case *ast.BasicLit:
-		switch n.Kind {
-		case token.FLOAT, token.INT:
-			val, _ = strconv.ParseFloat(n.Value, 64)
-		case token.CHAR, token.STRING:
-			val = n.Value
-		}
-		return &Node{
-			Kind:  n.Kind,
-			Value: val,
-		}
-	case *ast.FuncLit:
-		return &Node{
-			Kind:    token.FUNC,
-			Value:   val,
-			Context: m.Context,
-		}
-	}
-
-	return nil
-}
-
 // Evaluate evaluates a node and produces a literal
 func (m *machine) Evaluate(node ast.Node) (*Node, error) {
 	var err error
@@ -109,10 +79,12 @@ func (m *machine) Evaluate(node ast.Node) (*Node, error) {
 		lit = m.AstNodeToNode(n)
 	case *ast.FuncLit:
 		lit = &Node{
-			Kind:    token.FUNC,
+			Kind:    kind.FUNC,
 			Value:   n,
 			Context: m.Context,
 		}
+	case *ast.CompositeLit:
+		lit, err = m.evalComposite(n)
 	case *ast.Ident:
 		lit = m.Context.Get(n.Name)
 		if lit == nil {
@@ -275,6 +247,43 @@ func (m *machine) evalDecl(n *ast.DeclStmt) error {
 	return nil
 }
 
+func (m *machine) evalComposite(lit *ast.CompositeLit) (*Node, error) {
+	switch n := lit.Type.(type) {
+	case *ast.ArrayType:
+		return m.createArray(n.Elt, lit.Elts)
+	}
+	return nil, nil
+}
+
+func (m *machine) createArray(elt ast.Node, elems []ast.Expr) (*Node, error) {
+	value := make([]*Node, 0)
+	switch n := elt.(type) {
+	case *ast.Ident:
+		for _, elem := range elems {
+			elemNode, err := m.Evaluate(elem)
+			if err != nil {
+				return nil, err
+			}
+			value = append(value, elemNode)
+		}
+	case *ast.ArrayType:
+		// array of arrays. we have to eval each elem again
+		for _, elem := range elems {
+			elemLit := elem.(*ast.CompositeLit)
+			elemNode, err := m.createArray(n.Elt, elemLit.Elts)
+			if err != nil {
+				return nil, err
+			}
+			value = append(value, elemNode)
+		}
+	}
+
+	return &Node{
+		Kind:  kind.ARRAY,
+		Value: value,
+	}, nil
+}
+
 func (m *machine) evalIf(n *ast.IfStmt) (*Node, error) {
 	oldContext := m.Context
 	m.Context = m.Context.NewChildContext()
@@ -387,7 +396,7 @@ func (m *machine) evalFunctionCall(fun ast.Expr, args []ast.Expr) (*Node, error)
 		res, err = m.applyFunction(fun, args)
 	case *ast.FuncLit:
 		res, err = m.applyFunction(&Node{
-			Kind:    token.FUNC,
+			Kind:    kind.FUNC,
 			Value:   fun,
 			Context: m.Context,
 		}, args)
@@ -405,8 +414,8 @@ func (m *machine) evalUnary(expr *ast.UnaryExpr) (*ast.BasicLit, error) {
 		return nil, err
 	}
 
-	if node.Kind != token.INT && node.Kind != token.FLOAT {
-		return nil, errors.Errorf("unsupported operand types %s", node.Kind)
+	if node.Kind != kind.FLOAT {
+		return nil, errors.Errorf("unsupported operand types %v", node.Kind)
 	}
 
 	operand := node.Value.(float64)
@@ -437,10 +446,9 @@ func (m *machine) evalBinary(expr *ast.BinaryExpr) (*ast.BasicLit, error) {
 		return nil, err
 	}
 
-	if (nodeX.Kind != token.INT && nodeX.Kind != token.FLOAT) ||
-		(nodeY.Kind != token.INT && nodeY.Kind != token.FLOAT) {
+	if (nodeX.Kind != kind.FLOAT) || (nodeY.Kind != kind.FLOAT) {
 		return nil, errors.Errorf(
-			"unsupported operand types %s %s",
+			"unsupported operand types %v %v",
 			nodeX.Kind,
 			nodeY.Kind,
 		)
@@ -517,27 +525,4 @@ func (m *machine) evalBinary(expr *ast.BinaryExpr) (*ast.BasicLit, error) {
 	}
 
 	return NewFloatLiteral(r), nil
-}
-
-func isTruthyFloat(val float64) bool {
-	if val > 0 {
-		return true
-	}
-	return false
-}
-
-func isTruthy(node *Node) bool {
-	switch node.Kind {
-	case token.FLOAT, token.INT:
-		val, _ := node.Value.(float64)
-		return isTruthyFloat(val)
-	case token.STRING:
-		if node.Value.(string) == "" {
-			return false
-		}
-		return true
-	case token.FUNC:
-		return true
-	}
-	return false
 }
