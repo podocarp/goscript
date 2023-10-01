@@ -81,3 +81,24 @@ func TestFunctionClosure(t *testing.T) {
 	resLit := res.Node.(*ast.BasicLit)
 	assert.Equal(t, "20", resLit.Value)
 }
+
+// TestFunctionReturn tests that return statements work as expected
+func TestFunctionReturn(t *testing.T) {
+	m := machine.NewMachine()
+
+	stmt := `func(a) {
+		b := 0
+		for i:= 0; i < a; i++ {
+			b = i
+			if b > 5 {
+				return b
+			}
+		}
+
+		return 1000
+	}(10)`
+	res, err := m.ParseAndEval(stmt)
+	assert.Nil(t, err, err)
+	resLit := res.Node.(*ast.BasicLit)
+	assert.Equal(t, "6", resLit.Value)
+}

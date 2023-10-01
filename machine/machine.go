@@ -136,6 +136,9 @@ func (m *machine) Evaluate(node ast.Node) (*Node, error) {
 	case *ast.BlockStmt:
 		for _, stmt := range n.List {
 			lit, err = m.Evaluate(stmt)
+			if m.returnFlag {
+				break
+			}
 		}
 	case *ast.IfStmt:
 		lit, err = m.evalIf(n)
@@ -296,6 +299,10 @@ func (m *machine) evalFor(n *ast.ForStmt) (*Node, error) {
 		res, err = m.Evaluate(n.Body)
 		if err != nil {
 			return nil, errors.WrapPrefix(err, "cannot eval for body", 10)
+		}
+
+		if m.returnFlag {
+			break
 		}
 
 		_, err = m.Evaluate(n.Post)
