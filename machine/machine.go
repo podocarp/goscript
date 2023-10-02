@@ -5,6 +5,7 @@ import (
 	"go/parser"
 	"go/token"
 	"reflect"
+	"strconv"
 
 	"github.com/go-errors/errors"
 	"github.com/podocarp/goscript/kind"
@@ -93,6 +94,18 @@ func (m *machine) Evaluate(node ast.Node) (*Node, error) {
 		if lit == nil {
 			return nil, errors.Errorf("cannot find identifier %s", n.Name)
 		}
+	case *ast.IndexExpr:
+		arrNode, err := m.Evaluate(n.X)
+		if err != nil {
+			return nil, err
+		}
+		arr := arrNode.Value.([]*Node)
+		indexNode, err := m.Evaluate(n.Index)
+		if err != nil {
+			return nil, err
+		}
+		index := indexNode.Value.(float64)
+		lit = arr[int(index)]
 	case *ast.DeclStmt:
 		err = m.evalDecl(n)
 		if err != nil {
@@ -559,4 +572,33 @@ func (m *machine) evalBinary(expr *ast.BinaryExpr) (*ast.BasicLit, error) {
 	}
 
 	return NewFloatLiteral(r), nil
+}
+
+func (m *machine) AstNodeToNode(lit ast.Node) *Node {
+	var val any
+	switch n := lit.(type) {
+	case *ast.BasicLit:
+		switch n.Kind {
+		case token.FLOAT, token.INT:
+			val, _ = strconv.ParseFloat(n.Value, 64)
+			return &Node{
+				Kind:  kind.FLOAT,
+				Value: val,
+			}
+		case token.CHAR, token.STRING:
+			val, _ = strconv.Unquote(n.Value)
+			return &Node{
+				Kind:  kind.STRING,
+				Value: val,
+			}
+		}
+	case *ast.FuncLit:
+		return &Node{
+			Kind:    kind.FUNC,
+			Value:   val,
+			Context: m.Context,
+		}
+	}
+
+	return nil
 }
