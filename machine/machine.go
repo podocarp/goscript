@@ -85,6 +85,9 @@ func (m *machine) Evaluate(node ast.Node) (*Node, error) {
 		}
 	case *ast.CompositeLit:
 		lit, err = m.evalComposite(n)
+		if err != nil {
+			return nil, err
+		}
 	case *ast.Ident:
 		lit = m.Context.Get(n.Name)
 		if lit == nil {
@@ -92,17 +95,35 @@ func (m *machine) Evaluate(node ast.Node) (*Node, error) {
 		}
 	case *ast.DeclStmt:
 		err = m.evalDecl(n)
+		if err != nil {
+			return nil, err
+		}
 	case *ast.AssignStmt:
 		err = m.evalAssign(n)
+		if err != nil {
+			return nil, err
+		}
 	case *ast.ParenExpr:
 		lit, err = m.Evaluate(n.X)
+		if err != nil {
+			return nil, err
+		}
 	case *ast.ExprStmt:
 		lit, err = m.Evaluate(n.X)
+		if err != nil {
+			return nil, err
+		}
 	case *ast.BinaryExpr:
 		res, err = m.evalBinary(n)
+		if err != nil {
+			return nil, err
+		}
 		lit = m.AstNodeToNode(res)
 	case *ast.UnaryExpr:
 		res, err = m.evalUnary(n)
+		if err != nil {
+			return nil, err
+		}
 		lit = m.AstNodeToNode(res)
 	case *ast.IncDecStmt:
 		var tok token.Token
@@ -285,14 +306,20 @@ func (m *machine) createArray(elt ast.Node, elems []ast.Expr) (*Node, error) {
 }
 
 func (m *machine) evalIf(n *ast.IfStmt) (*Node, error) {
+	// save machine context
 	oldContext := m.Context
-	m.Context = m.Context.NewChildContext()
+	// context for the stuff in (...)
+	ifContext := oldContext.NewChildContext()
+	// context for the stuff in the if block
+	blockContext := ifContext.NewChildContext()
 
+	m.Context = ifContext
 	cond, err := m.Evaluate(n.Cond)
 	if err != nil {
 		return nil, errors.Errorf("cannot eval if cond %w", err)
 	}
 
+	m.Context = blockContext
 	var res *Node
 	if isTruthy(cond) {
 		res, err = m.Evaluate(n.Body)
@@ -309,9 +336,14 @@ func (m *machine) evalIf(n *ast.IfStmt) (*Node, error) {
 }
 
 func (m *machine) evalFor(n *ast.ForStmt) (*Node, error) {
+	// save context before for block
 	oldContext := m.Context
-	m.Context = m.Context.NewChildContext()
+	// context for the contents in the (...).
+	forContext := oldContext.NewChildContext()
+	// context for the for block
+	blockContext := forContext.NewChildContext()
 
+	m.Context = forContext
 	_, err := m.Evaluate(n.Init)
 	if err != nil {
 		return nil, errors.WrapPrefix(err, "cannot eval for init block", 10)
@@ -327,6 +359,7 @@ func (m *machine) evalFor(n *ast.ForStmt) (*Node, error) {
 			break
 		}
 
+		m.Context = blockContext
 		res, err = m.Evaluate(n.Body)
 		if err != nil {
 			return nil, errors.WrapPrefix(err, "cannot eval for body", 10)
@@ -336,6 +369,7 @@ func (m *machine) evalFor(n *ast.ForStmt) (*Node, error) {
 			break
 		}
 
+		m.Context = forContext
 		_, err = m.Evaluate(n.Post)
 		if err != nil {
 			return nil, errors.WrapPrefix(err, "cannot eval for post", 10)
