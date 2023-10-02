@@ -9,7 +9,7 @@ import (
 )
 
 func TestMachineSimple(t *testing.T) {
-	m := machine.NewMachine(machine.MachineOptSetDebug)
+	m := machine.NewMachine()
 
 	stmt := "func(a) { return 1 }()"
 	res, err := m.ParseAndEval(stmt)
@@ -26,6 +26,17 @@ func TestMachineSimple(t *testing.T) {
 	res, err = m.ParseAndEval(stmt)
 	assert.Nil(t, err, err)
 	assert.EqualValues(t, 46.0, res.Value)
+
+	stmt = `func(a, b) {
+		if (a < b) {
+			return b
+		}
+		return a
+	}( 10, 1 )
+	`
+	res, err = m.ParseAndEval(stmt)
+	assert.Nil(t, err, err)
+	assert.EqualValues(t, 10, res.Value)
 }
 
 // TestReturnFunctionLit test that we can return and execute a function literal
@@ -80,7 +91,7 @@ func TestFunctionClosure(t *testing.T) {
 
 // TestFunctionReturn tests that return statements work as expected
 func TestFunctionReturn(t *testing.T) {
-	m := machine.NewMachine()
+	m := machine.NewMachine(machine.MachineOptSetDebug)
 
 	stmt := `func(a) {
 		b := 0
@@ -140,4 +151,36 @@ func TestIfStmtContext(t *testing.T) {
 	res, err := m.ParseAndEval(stmt)
 	assert.NotNil(t, err, "should have error")
 	assert.Nil(t, res, "should not have result", res)
+}
+
+func TestRecursion(t *testing.T) {
+	// limit stack size if it is going to overflow
+	m := machine.NewMachine(machine.MachineOptSetMaxDepth(100))
+	stmt := `func() {
+		Fib := func (n) {
+			if n < 2 {
+				return n
+			}
+			return Fib(n-1)
+		}
+		return Fib(2)
+	}()
+	`
+	res, err := m.ParseAndEval(stmt)
+	assert.Nil(t, err, err)
+	assert.EqualValues(t, 1, res.Value)
+
+	stmt = `func() {
+		Fib := func (n) {
+			if n < 2 {
+				return n
+			}
+			return Fib(n-1) + Fib(n-2)
+		}
+		return Fib(6)
+	}()
+	`
+	res, err = m.ParseAndEval(stmt)
+	assert.Nil(t, err, err)
+	assert.EqualValues(t, 8, res.Value)
 }

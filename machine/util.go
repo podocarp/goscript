@@ -1,8 +1,6 @@
 package machine
 
 import (
-	"fmt"
-
 	"github.com/podocarp/goscript/kind"
 )
 
@@ -17,7 +15,6 @@ func isTruthy(node *Node) bool {
 	switch node.Kind {
 	case kind.FLOAT:
 		val := node.Value.(Number).ToFloat()
-		fmt.Println(node.Value)
 		return isTruthyFloat(val)
 	case kind.STRING:
 		if node.Value.(string) == "" {

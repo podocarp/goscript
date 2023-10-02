@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"math"
 	"reflect"
 	"strconv"
 
@@ -15,23 +16,27 @@ import (
 type machine struct {
 	Context *context
 
-	// whether we hit a return statement and should exit
-	returnFlag bool
 	// whether to print out the ast and some other debugging stuff
 	debugFlag bool
+	maxDepth  int
 }
 
-type MachineOpts func(*machine)
+type MachineOpt func(*machine)
 
 func MachineOptSetDebug(m *machine) {
 	m.debugFlag = true
-	m.Context = newContext(true)
 }
 
-func NewMachine(opts ...MachineOpts) *machine {
+func MachineOptSetMaxDepth(maxdepth int) MachineOpt {
+	return func(m *machine) {
+		m.maxDepth = maxdepth
+	}
+}
+
+func NewMachine(opts ...MachineOpt) *machine {
 	m := &machine{
-		Context:    newContext(false),
-		returnFlag: false,
+		Context:  NewContext("global"),
+		maxDepth: math.MaxInt,
 	}
 
 	for _, o := range opts {
@@ -71,27 +76,32 @@ func (m *machine) CallFunction(fun *ast.FuncLit, args []ast.Expr) (*Node, error)
 }
 
 // Evaluate evaluates a node and produces a literal
-func (m *machine) Evaluate(node ast.Node) (*Node, error) {
+func (m *machine) Evaluate(expr ast.Node) (*Node, error) {
 	var err error
-	var lit *Node
+	var node *Node
+	m.maxDepth--
+	if m.maxDepth <= 0 {
+		return nil, errors.New("evaluate depth exceeded")
+	}
 
-	switch n := node.(type) {
-	case *ast.BasicLit:
-		lit = m.WrapAstNode(n)
-	case *ast.FuncLit:
-		lit = &Node{
-			Kind:    kind.FUNC,
-			Value:   n,
-			Context: m.Context,
-		}
+	if m.debugFlag {
+		fmt.Printf(
+			"---evaluating %s\n", reflect.TypeOf(expr),
+		)
+		ast.Print(token.NewFileSet(), expr)
+	}
+
+	switch n := expr.(type) {
+	case *ast.BasicLit, *ast.FuncLit:
+		node = m.evalLit(n)
 	case *ast.CompositeLit:
-		lit, err = m.evalComposite(n)
+		node, err = m.evalComposite(n)
 		if err != nil {
 			return nil, err
 		}
 	case *ast.Ident:
-		lit = m.Context.Get(n.Name)
-		if lit == nil {
+		node = m.Context.Get(n.Name)
+		if node == nil {
 			return nil, errors.Errorf("cannot find identifier %s", n.Name)
 		}
 	case *ast.IndexExpr:
@@ -108,34 +118,34 @@ func (m *machine) Evaluate(node ast.Node) (*Node, error) {
 		if !index.isIntegral() {
 			return nil, errors.New("index is not an integer")
 		}
-		lit = arr[int(index)]
+		node = arr[int(index)]
 	case *ast.DeclStmt:
-		err = m.evalDecl(n)
+		node, err = m.evalDecl(n)
 		if err != nil {
 			return nil, err
 		}
 	case *ast.AssignStmt:
-		err = m.evalAssign(n)
+		node, err = m.evalAssign(n)
 		if err != nil {
 			return nil, err
 		}
 	case *ast.ParenExpr:
-		lit, err = m.Evaluate(n.X)
+		node, err = m.Evaluate(n.X)
 		if err != nil {
 			return nil, err
 		}
 	case *ast.ExprStmt:
-		lit, err = m.Evaluate(n.X)
+		node, err = m.Evaluate(n.X)
 		if err != nil {
 			return nil, err
 		}
 	case *ast.BinaryExpr:
-		lit, err = m.evalBinary(n)
+		node, err = m.evalBinary(n)
 		if err != nil {
 			return nil, err
 		}
 	case *ast.UnaryExpr:
-		lit, err = m.evalUnary(n)
+		node, err = m.evalUnary(n)
 		if err != nil {
 			return nil, err
 		}
@@ -146,39 +156,62 @@ func (m *machine) Evaluate(node ast.Node) (*Node, error) {
 		} else if n.Tok == token.DEC {
 			tok = token.SUB_ASSIGN
 		}
-		err = m.evalAssign(&ast.AssignStmt{
+		node, err = m.evalAssign(&ast.AssignStmt{
 			Lhs: []ast.Expr{n.X},
 			Rhs: []ast.Expr{Number(1).ToLiteral()},
 			Tok: tok,
 		})
 	case *ast.CallExpr:
-		lit, err = m.evalFunctionCall(n.Fun, n.Args)
-	case *ast.ReturnStmt:
-		m.returnFlag = true
-		lit, err = m.Evaluate(n.Results[0])
+		node, err = m.evalFunctionCall(n.Fun, n.Args)
 	case *ast.BlockStmt:
-		for _, stmt := range n.List {
-			lit, err = m.Evaluate(stmt)
-			if m.returnFlag {
-				break
-			}
-		}
+		node, err = m.evalBlock(n)
 	case *ast.IfStmt:
-		lit, err = m.evalIf(n)
+		node, err = m.evalIf(n)
 	case *ast.ForStmt:
-		lit, err = m.evalFor(n)
+		node, err = m.evalFor(n)
+	case *ast.ReturnStmt:
+		node, err = m.Evaluate(n.Results[0])
+		if err != nil {
+			return nil, err
+		}
+		node.IsReturnValue = true
 	default:
-		return nil, errors.Errorf("unknown type %v", reflect.TypeOf(node))
+		return nil, errors.Errorf("unknown type %v", reflect.TypeOf(expr))
 	}
 
-	return lit, err
+	if m.debugFlag {
+		fmt.Printf(
+			"%s, evaluation result: %v\n", m.Context.String(), node,
+		)
+	}
+
+	m.maxDepth++
+	return node, err
 }
 
-func (m *machine) evalAssign(stmt *ast.AssignStmt) error {
+func (m *machine) evalBlock(stmt *ast.BlockStmt) (*Node, error) {
+	var res *Node
+	var err error
+	for _, stmt := range stmt.List {
+		res, err = m.Evaluate(stmt)
+		if err != nil {
+			return nil, err
+		}
+		if res != nil && res.IsReturnValue {
+			break
+		}
+	}
+
+	return res, nil
+}
+
+func (m *machine) evalAssign(stmt *ast.AssignStmt) (*Node, error) {
 	name := stmt.Lhs[0].(*ast.Ident).Name
+	var node *Node
+	var err error
 	switch stmt.Tok {
 	case token.ADD_ASSIGN: // +=
-		node, err := m.evalBinary(&ast.BinaryExpr{
+		node, err = m.evalBinary(&ast.BinaryExpr{
 			X:  stmt.Lhs[0],
 			Op: token.ADD,
 			Y:  stmt.Rhs[0],
@@ -188,10 +221,10 @@ func (m *machine) evalAssign(stmt *ast.AssignStmt) error {
 		}
 		err = m.Context.Update(name, node)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	case token.SUB_ASSIGN: // -=
-		node, err := m.evalBinary(&ast.BinaryExpr{
+		node, err = m.evalBinary(&ast.BinaryExpr{
 			X:  stmt.Lhs[0],
 			Op: token.SUB,
 			Y:  stmt.Rhs[0],
@@ -201,10 +234,10 @@ func (m *machine) evalAssign(stmt *ast.AssignStmt) error {
 		}
 		err = m.Context.Update(name, node)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	case token.MUL_ASSIGN: // *=
-		node, err := m.evalBinary(&ast.BinaryExpr{
+		node, err = m.evalBinary(&ast.BinaryExpr{
 			X:  stmt.Lhs[0],
 			Op: token.MUL,
 			Y:  stmt.Rhs[0],
@@ -214,10 +247,10 @@ func (m *machine) evalAssign(stmt *ast.AssignStmt) error {
 		}
 		err = m.Context.Update(name, node)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	case token.QUO_ASSIGN: // /=
-		node, err := m.evalBinary(&ast.BinaryExpr{
+		node, err = m.evalBinary(&ast.BinaryExpr{
 			X:  stmt.Lhs[0],
 			Op: token.QUO,
 			Y:  stmt.Rhs[0],
@@ -227,10 +260,10 @@ func (m *machine) evalAssign(stmt *ast.AssignStmt) error {
 		}
 		err = m.Context.Update(name, node)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	case token.REM_ASSIGN: // %=
-		node, err := m.evalBinary(&ast.BinaryExpr{
+		node, err = m.evalBinary(&ast.BinaryExpr{
 			X:  stmt.Lhs[0],
 			Op: token.REM,
 			Y:  stmt.Rhs[0],
@@ -240,46 +273,48 @@ func (m *machine) evalAssign(stmt *ast.AssignStmt) error {
 		}
 		err = m.Context.Update(name, node)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	case token.ASSIGN: // =
-		node, err := m.Evaluate(stmt.Rhs[0])
+		node, err = m.Evaluate(stmt.Rhs[0])
 		if err != nil {
-			return err
+			return nil, err
 		}
 		err = m.Context.Update(name, node)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	case token.DEFINE: // :=
-		node, err := m.Evaluate(stmt.Rhs[0])
+		node, err = m.Evaluate(stmt.Rhs[0])
 		err = m.Context.Set(name, node)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	default:
-		return errors.Errorf("unknown assign token %s", stmt.Tok.String())
+		return nil, errors.Errorf("unknown assign token %s", stmt.Tok.String())
 	}
-	return nil
+
+	return node, err
 }
 
-func (m *machine) evalDecl(n *ast.DeclStmt) error {
+func (m *machine) evalDecl(n *ast.DeclStmt) (*Node, error) {
 	decl := n.Decl.(*ast.GenDecl)
+	var res *Node
 	for _, spec := range decl.Specs {
 		s := spec.(*ast.ValueSpec)
 		for i, name := range s.Names {
 			res, err := m.Evaluate(s.Values[i])
 			if err != nil {
-				return err
+				return nil, err
 			}
 			err = m.Context.Set(name.Name, res)
 			if err != nil {
-				return err
+				return nil, err
 			}
 		}
 	}
 
-	return nil
+	return res, nil
 }
 
 func (m *machine) evalComposite(lit *ast.CompositeLit) (*Node, error) {
@@ -323,9 +358,9 @@ func (m *machine) evalIf(n *ast.IfStmt) (*Node, error) {
 	// save machine context
 	oldContext := m.Context
 	// context for the stuff in (...)
-	ifContext := oldContext.NewChildContext()
+	ifContext := oldContext.NewChildContext("if stmt")
 	// context for the stuff in the if block
-	blockContext := ifContext.NewChildContext()
+	blockContext := ifContext.NewChildContext("if block")
 
 	m.Context = ifContext
 	cond, err := m.Evaluate(n.Cond)
@@ -342,7 +377,7 @@ func (m *machine) evalIf(n *ast.IfStmt) (*Node, error) {
 	}
 
 	if err != nil {
-		return nil, errors.WrapPrefix(err, "cannot eval if body", 10)
+		return nil, errors.WrapPrefix(err, "cannot eval if", 10)
 	}
 
 	m.Context = oldContext
@@ -353,9 +388,9 @@ func (m *machine) evalFor(n *ast.ForStmt) (*Node, error) {
 	// save context before for block
 	oldContext := m.Context
 	// context for the contents in the (...).
-	forContext := oldContext.NewChildContext()
+	forContext := oldContext.NewChildContext("for stmt")
 	// context for the for block
-	blockContext := forContext.NewChildContext()
+	blockContext := forContext.NewChildContext("for block")
 
 	m.Context = forContext
 	_, err := m.Evaluate(n.Init)
@@ -379,7 +414,7 @@ func (m *machine) evalFor(n *ast.ForStmt) (*Node, error) {
 			return nil, errors.WrapPrefix(err, "cannot eval for body", 10)
 		}
 
-		if m.returnFlag {
+		if res != nil && res.IsReturnValue {
 			break
 		}
 
@@ -395,8 +430,7 @@ func (m *machine) evalFor(n *ast.ForStmt) (*Node, error) {
 }
 
 func (m *machine) applyFunction(fun *Node, args []ast.Expr) (*Node, error) {
-	oldContext := m.Context
-	m.Context = fun.Context.NewChildContext()
+	m.Context = m.Context.NewChildContext("func block")
 
 	n := fun.Value.(*ast.FuncLit)
 	// populate arguments
@@ -411,7 +445,7 @@ func (m *machine) applyFunction(fun *Node, args []ast.Expr) (*Node, error) {
 
 		argNode, err := m.Evaluate(arg)
 		if err != nil {
-			return nil, errors.Errorf("cannot eval arg %v", arg)
+			return nil, errors.WrapPrefix(err, "cannot eval arg", 10)
 		}
 		m.Context.Set(name, argNode)
 	}
@@ -419,18 +453,12 @@ func (m *machine) applyFunction(fun *Node, args []ast.Expr) (*Node, error) {
 	// evaluate body
 	var res *Node
 	var err error
-	for _, stmt := range n.Body.List {
-		res, err = m.Evaluate(stmt)
-		if err != nil {
-			return nil, err
-		}
-		if m.returnFlag {
-			break
-		}
+	res, err = m.Evaluate(n.Body)
+	if err != nil {
+		return nil, err
 	}
 
-	m.returnFlag = false
-	m.Context = oldContext
+	m.Context = m.Context.Parent
 	return res, nil
 }
 
@@ -443,11 +471,7 @@ func (m *machine) evalFunctionCall(fun ast.Expr, args []ast.Expr) (*Node, error)
 		fun := m.Context.Get(n.Name)
 		res, err = m.applyFunction(fun, args)
 	case *ast.FuncLit:
-		res, err = m.applyFunction(&Node{
-			Kind:    kind.FUNC,
-			Value:   fun,
-			Context: m.Context,
-		}, args)
+		res, err = m.applyFunction(m.evalLit(fun), args)
 
 	default:
 		return nil, errors.Errorf("unimplemented function type %s", n)
@@ -572,12 +596,10 @@ func (m *machine) evalBinary(expr *ast.BinaryExpr) (*Node, error) {
 		return nil, errors.New("Operation not supported")
 	}
 
-	fmt.Println(operand1, operand2, r)
 	return Number(r).ToNode(), nil
 }
 
-func (m *machine) WrapAstNode(lit ast.Node) *Node {
-	var val any
+func (m *machine) evalLit(lit ast.Node) *Node {
 	switch n := lit.(type) {
 	case *ast.BasicLit:
 		switch n.Kind {
@@ -587,7 +609,7 @@ func (m *machine) WrapAstNode(lit ast.Node) *Node {
 				Value: LiteralToNumber(n),
 			}
 		case token.CHAR, token.STRING:
-			val, _ = strconv.Unquote(n.Value)
+			val, _ := strconv.Unquote(n.Value)
 			return &Node{
 				Kind:  kind.STRING,
 				Value: val,
@@ -596,7 +618,7 @@ func (m *machine) WrapAstNode(lit ast.Node) *Node {
 	case *ast.FuncLit:
 		return &Node{
 			Kind:    kind.FUNC,
-			Value:   val,
+			Value:   lit,
 			Context: m.Context,
 		}
 	}

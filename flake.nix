@@ -14,6 +14,7 @@
           go_1_21
           gopls
         ];
+        hardeningDisable = [ "fortify" ];
       };
   };
 }

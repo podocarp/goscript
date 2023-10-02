@@ -12,6 +12,8 @@ type Node struct {
 	Kind    kind.Kind
 	Value   any
 	Context *context
+
+	IsReturnValue bool
 }
 
 func arrToString(arr []*Node) string {
@@ -31,16 +33,22 @@ func arrToString(arr []*Node) string {
 }
 
 func (n *Node) String() string {
+	var val string
 	switch n.Kind {
 	case kind.ARRAY:
-		return arrToString(n.Value.([]*Node))
+		val = arrToString(n.Value.([]*Node))
 	case kind.FLOAT:
-		return fmt.Sprint(n.Value)
+		val = fmt.Sprint(n.Value)
 	case kind.STRING:
-		return strconv.Quote(fmt.Sprint(n.Value))
+		val = strconv.Quote(fmt.Sprint(n.Value))
 	case kind.FUNC:
-		return "λ"
+		val = "λ"
 	default:
 		return "unknown type"
 	}
+
+	if n.IsReturnValue {
+		return val + "[r]"
+	}
+	return val
 }
