@@ -2,10 +2,7 @@ package machine
 
 import (
 	"fmt"
-	"go/ast"
-	"go/token"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/go-errors/errors"
@@ -100,11 +97,4 @@ func (c *context) String() string {
 		return i < j
 	})
 	return strings.Join(strs, " | ")
-}
-
-func NewFloatLiteral(val float64) *ast.BasicLit {
-	return &ast.BasicLit{
-		Kind:  token.FLOAT,
-		Value: strconv.FormatFloat(val, 'g', 4, 64),
-	}
 }

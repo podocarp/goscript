@@ -9,23 +9,23 @@ import (
 )
 
 func TestMachineSimple(t *testing.T) {
-	m := machine.NewMachine()
+	m := machine.NewMachine(machine.MachineOptSetDebug)
 
 	stmt := "func(a) { return 1 }()"
 	res, err := m.ParseAndEval(stmt)
 	assert.Nil(t, err)
-	assert.Equal(t, 1.0, res.Value)
+	assert.EqualValues(t, 1.0, res.Value)
 
 	stmt = `func(a, b) {
 		for i := 0; i < a; i++ {
 			b += i
 		}
 		return b
-	}( 10, 0 )
+	}( 10, 1 )
 	`
 	res, err = m.ParseAndEval(stmt)
 	assert.Nil(t, err, err)
-	assert.Equal(t, 45.0, res.Value)
+	assert.EqualValues(t, 46.0, res.Value)
 }
 
 // TestReturnFunctionLit test that we can return and execute a function literal
@@ -37,10 +37,10 @@ func TestReturnFunctionLit(t *testing.T) {
 	assert.Nil(t, err)
 	resLit := res.Value.(*ast.FuncLit)
 	callRes, err := m.CallFunction(resLit, []ast.Expr{
-		machine.NewFloatLiteral(1),
+		machine.Number(1).ToLiteral(),
 	})
 	assert.Nil(t, err)
-	assert.Equal(t, 1.0, callRes.Value)
+	assert.EqualValues(t, 1.0, callRes.Value)
 }
 
 // TestFunctionDefAndCall test that we can define functions and eval them
@@ -56,7 +56,7 @@ func TestFunctionDefAndCall(t *testing.T) {
 	}()`
 	res, err := m.ParseAndEval(stmt)
 	assert.Nil(t, err)
-	assert.Equal(t, 100.0, res.Value)
+	assert.EqualValues(t, 100.0, res.Value)
 }
 
 // TestFunctionClosure tests that function closures work as expected
@@ -75,7 +75,7 @@ func TestFunctionClosure(t *testing.T) {
 	}()`
 	res, err := m.ParseAndEval(stmt)
 	assert.Nil(t, err, err)
-	assert.Equal(t, 20.0, res.Value)
+	assert.EqualValues(t, 20.0, res.Value)
 }
 
 // TestFunctionReturn tests that return statements work as expected
@@ -95,7 +95,7 @@ func TestFunctionReturn(t *testing.T) {
 	}(10)`
 	res, err := m.ParseAndEval(stmt)
 	assert.Nil(t, err, err)
-	assert.Equal(t, 6.0, res.Value)
+	assert.EqualValues(t, 6.0, res.Value)
 }
 
 func TestForLoopContext(t *testing.T) {

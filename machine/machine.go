@@ -1,6 +1,7 @@
 package machine
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -72,12 +73,11 @@ func (m *machine) CallFunction(fun *ast.FuncLit, args []ast.Expr) (*Node, error)
 // Evaluate evaluates a node and produces a literal
 func (m *machine) Evaluate(node ast.Node) (*Node, error) {
 	var err error
-	var res ast.Node
 	var lit *Node
 
 	switch n := node.(type) {
 	case *ast.BasicLit:
-		lit = m.AstNodeToNode(n)
+		lit = m.WrapAstNode(n)
 	case *ast.FuncLit:
 		lit = &Node{
 			Kind:    kind.FUNC,
@@ -104,7 +104,10 @@ func (m *machine) Evaluate(node ast.Node) (*Node, error) {
 		if err != nil {
 			return nil, err
 		}
-		index := indexNode.Value.(float64)
+		index := indexNode.Value.(Number)
+		if !index.isIntegral() {
+			return nil, errors.New("index is not an integer")
+		}
 		lit = arr[int(index)]
 	case *ast.DeclStmt:
 		err = m.evalDecl(n)
@@ -127,17 +130,15 @@ func (m *machine) Evaluate(node ast.Node) (*Node, error) {
 			return nil, err
 		}
 	case *ast.BinaryExpr:
-		res, err = m.evalBinary(n)
+		lit, err = m.evalBinary(n)
 		if err != nil {
 			return nil, err
 		}
-		lit = m.AstNodeToNode(res)
 	case *ast.UnaryExpr:
-		res, err = m.evalUnary(n)
+		lit, err = m.evalUnary(n)
 		if err != nil {
 			return nil, err
 		}
-		lit = m.AstNodeToNode(res)
 	case *ast.IncDecStmt:
 		var tok token.Token
 		if n.Tok == token.INC {
@@ -147,7 +148,7 @@ func (m *machine) Evaluate(node ast.Node) (*Node, error) {
 		}
 		err = m.evalAssign(&ast.AssignStmt{
 			Lhs: []ast.Expr{n.X},
-			Rhs: []ast.Expr{NewFloatLiteral(1)},
+			Rhs: []ast.Expr{Number(1).ToLiteral()},
 			Tok: tok,
 		})
 	case *ast.CallExpr:
@@ -177,7 +178,7 @@ func (m *machine) evalAssign(stmt *ast.AssignStmt) error {
 	name := stmt.Lhs[0].(*ast.Ident).Name
 	switch stmt.Tok {
 	case token.ADD_ASSIGN: // +=
-		lit, err := m.evalBinary(&ast.BinaryExpr{
+		node, err := m.evalBinary(&ast.BinaryExpr{
 			X:  stmt.Lhs[0],
 			Op: token.ADD,
 			Y:  stmt.Rhs[0],
@@ -185,12 +186,12 @@ func (m *machine) evalAssign(stmt *ast.AssignStmt) error {
 		if err != nil {
 			break
 		}
-		err = m.Context.Update(name, m.AstNodeToNode(lit))
+		err = m.Context.Update(name, node)
 		if err != nil {
 			return err
 		}
 	case token.SUB_ASSIGN: // -=
-		lit, err := m.evalBinary(&ast.BinaryExpr{
+		node, err := m.evalBinary(&ast.BinaryExpr{
 			X:  stmt.Lhs[0],
 			Op: token.SUB,
 			Y:  stmt.Rhs[0],
@@ -198,12 +199,12 @@ func (m *machine) evalAssign(stmt *ast.AssignStmt) error {
 		if err != nil {
 			break
 		}
-		err = m.Context.Update(name, m.AstNodeToNode(lit))
+		err = m.Context.Update(name, node)
 		if err != nil {
 			return err
 		}
 	case token.MUL_ASSIGN: // *=
-		lit, err := m.evalBinary(&ast.BinaryExpr{
+		node, err := m.evalBinary(&ast.BinaryExpr{
 			X:  stmt.Lhs[0],
 			Op: token.MUL,
 			Y:  stmt.Rhs[0],
@@ -211,12 +212,12 @@ func (m *machine) evalAssign(stmt *ast.AssignStmt) error {
 		if err != nil {
 			break
 		}
-		err = m.Context.Update(name, m.AstNodeToNode(lit))
+		err = m.Context.Update(name, node)
 		if err != nil {
 			return err
 		}
 	case token.QUO_ASSIGN: // /=
-		lit, err := m.evalBinary(&ast.BinaryExpr{
+		node, err := m.evalBinary(&ast.BinaryExpr{
 			X:  stmt.Lhs[0],
 			Op: token.QUO,
 			Y:  stmt.Rhs[0],
@@ -224,12 +225,12 @@ func (m *machine) evalAssign(stmt *ast.AssignStmt) error {
 		if err != nil {
 			break
 		}
-		err = m.Context.Update(name, m.AstNodeToNode(lit))
+		err = m.Context.Update(name, node)
 		if err != nil {
 			return err
 		}
 	case token.REM_ASSIGN: // %=
-		lit, err := m.evalBinary(&ast.BinaryExpr{
+		node, err := m.evalBinary(&ast.BinaryExpr{
 			X:  stmt.Lhs[0],
 			Op: token.REM,
 			Y:  stmt.Rhs[0],
@@ -237,22 +238,22 @@ func (m *machine) evalAssign(stmt *ast.AssignStmt) error {
 		if err != nil {
 			break
 		}
-		err = m.Context.Update(name, m.AstNodeToNode(lit))
+		err = m.Context.Update(name, node)
 		if err != nil {
 			return err
 		}
 	case token.ASSIGN: // =
-		lit, err := m.Evaluate(stmt.Rhs[0])
+		node, err := m.Evaluate(stmt.Rhs[0])
 		if err != nil {
 			return err
 		}
-		err = m.Context.Update(name, lit)
+		err = m.Context.Update(name, node)
 		if err != nil {
 			return err
 		}
 	case token.DEFINE: // :=
-		lit, err := m.Evaluate(stmt.Rhs[0])
-		err = m.Context.Set(name, lit)
+		node, err := m.Evaluate(stmt.Rhs[0])
+		err = m.Context.Set(name, node)
 		if err != nil {
 			return err
 		}
@@ -455,7 +456,7 @@ func (m *machine) evalFunctionCall(fun ast.Expr, args []ast.Expr) (*Node, error)
 	return res, err
 }
 
-func (m *machine) evalUnary(expr *ast.UnaryExpr) (*ast.BasicLit, error) {
+func (m *machine) evalUnary(expr *ast.UnaryExpr) (*Node, error) {
 	node, err := m.Evaluate(expr.X)
 	if err != nil {
 		return nil, err
@@ -465,7 +466,7 @@ func (m *machine) evalUnary(expr *ast.UnaryExpr) (*ast.BasicLit, error) {
 		return nil, errors.Errorf("unsupported operand types %v", node.Kind)
 	}
 
-	operand := node.Value.(float64)
+	operand := node.Value.(Number).ToFloat()
 	var r float64
 	switch expr.Op {
 	case token.SUB:
@@ -480,10 +481,10 @@ func (m *machine) evalUnary(expr *ast.UnaryExpr) (*ast.BasicLit, error) {
 		return nil, errors.New("Operation not supported")
 	}
 
-	return NewFloatLiteral(r), nil
+	return Number(r).ToNode(), nil
 }
 
-func (m *machine) evalBinary(expr *ast.BinaryExpr) (*ast.BasicLit, error) {
+func (m *machine) evalBinary(expr *ast.BinaryExpr) (*Node, error) {
 	nodeX, err := m.Evaluate(expr.X)
 	if err != nil {
 		return nil, err
@@ -501,8 +502,8 @@ func (m *machine) evalBinary(expr *ast.BinaryExpr) (*ast.BasicLit, error) {
 		)
 	}
 
-	operand1 := nodeX.Value.(float64)
-	operand2 := nodeY.Value.(float64)
+	operand1 := nodeX.Value.(Number).ToFloat()
+	operand2 := nodeY.Value.(Number).ToFloat()
 	var r float64
 	switch expr.Op {
 	case token.ADD: // +
@@ -559,7 +560,7 @@ func (m *machine) evalBinary(expr *ast.BinaryExpr) (*ast.BasicLit, error) {
 		} else {
 			r = 1
 		}
-	case token.LOR:
+	case token.LOR: // ||
 		if isTruthyFloat(operand1) {
 			r = 1
 		} else if isTruthyFloat(operand2) {
@@ -571,19 +572,19 @@ func (m *machine) evalBinary(expr *ast.BinaryExpr) (*ast.BasicLit, error) {
 		return nil, errors.New("Operation not supported")
 	}
 
-	return NewFloatLiteral(r), nil
+	fmt.Println(operand1, operand2, r)
+	return Number(r).ToNode(), nil
 }
 
-func (m *machine) AstNodeToNode(lit ast.Node) *Node {
+func (m *machine) WrapAstNode(lit ast.Node) *Node {
 	var val any
 	switch n := lit.(type) {
 	case *ast.BasicLit:
 		switch n.Kind {
 		case token.FLOAT, token.INT:
-			val, _ = strconv.ParseFloat(n.Value, 64)
 			return &Node{
 				Kind:  kind.FLOAT,
-				Value: val,
+				Value: LiteralToNumber(n),
 			}
 		case token.CHAR, token.STRING:
 			val, _ = strconv.Unquote(n.Value)

@@ -9,7 +9,7 @@ import (
 
 // TestArrayDefine test that we can define and index arrays properly
 func TestArrayDefine(t *testing.T) {
-	m := machine.NewMachine()
+	m := machine.NewMachine(machine.MachineOptSetDebug)
 
 	stmt := `func() {
 		c := []string{"as\nd"}

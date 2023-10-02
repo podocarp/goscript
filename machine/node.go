@@ -2,6 +2,7 @@ package machine
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/podocarp/goscript/kind"
@@ -20,7 +21,7 @@ func arrToString(arr []*Node) string {
 		if elem.Kind == kind.ARRAY {
 			arrContents.WriteString(arrToString(elem.Value.([]*Node)))
 		} else {
-			arrContents.WriteString(fmt.Sprint(elem.Value))
+			arrContents.WriteString(strconv.Quote(fmt.Sprint(elem.Value)))
 		}
 		arrContents.WriteString(" ")
 	}
@@ -33,8 +34,10 @@ func (n *Node) String() string {
 	switch n.Kind {
 	case kind.ARRAY:
 		return arrToString(n.Value.([]*Node))
-	case kind.FLOAT, kind.STRING:
+	case kind.FLOAT:
 		return fmt.Sprint(n.Value)
+	case kind.STRING:
+		return strconv.Quote(fmt.Sprint(n.Value))
 	case kind.FUNC:
 		return "λ"
 	default:
