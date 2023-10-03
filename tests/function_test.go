@@ -25,8 +25,7 @@ func TestReturnFunctionLit(t *testing.T) {
 	stmt := "func(a) { return a }"
 	res, err := m.ParseAndEval(stmt)
 	assert.Nil(t, err)
-	resLit := res.Value.(*ast.FuncLit)
-	callRes, err := m.CallFunction(resLit, []ast.Expr{
+	callRes, err := m.CallFunction(res, []ast.Expr{
 		machine.Number(1).ToLiteral(),
 	})
 	assert.Nil(t, err)

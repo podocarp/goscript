@@ -68,11 +68,19 @@ func (m *machine) Parse(stmt string) (ast.Node, error) {
 	return res, err
 }
 
-func (m *machine) CallFunction(fun *ast.FuncLit, args []ast.Expr) (*Node, error) {
-	return m.Evaluate(&ast.CallExpr{
-		Fun:  fun,
-		Args: args,
-	})
+func (m *machine) CallFunction(fun any, args []ast.Expr) (*Node, error) {
+	if funNode, ok := fun.(*Node); ok {
+		if funLit, ok := funNode.Value.(*ast.FuncLit); ok {
+			return m.Evaluate(&ast.CallExpr{
+				Fun:  funLit,
+				Args: args,
+			})
+		} else {
+			return nil, errors.New("the supplied argument is not a function.")
+		}
+	} else {
+		return nil, errors.New("param \"fun\" must be the result of an Evaluate call.")
+	}
 }
 
 // Evaluate evaluates a node and produces a literal

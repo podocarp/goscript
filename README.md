@@ -36,6 +36,38 @@ func() {
 Notice how types are not needed, and recursion can be done without pre-defining
 the function variable.
 
+## Usage
+
+Create a machine and evaluate code:
+```go
+func main() {
+	m := machine.NewMachine()
+
+	stmt := "func(a) { return a }(1)"
+	res, err := m.ParseAndEval(stmt)
+}
+```
+Because of the parser used you need to encapsulate all your code in a function
+if you are going to write more than one line.
+
+You can also make the function call at a later time:
+```go
+func main() {
+	m := machine.NewMachine()
+
+	stmt := "func(a) { return a }"
+	res, err := m.ParseAndEval(stmt)
+
+	resLit := res.Value.(*ast.FuncLit)
+	callRes, err := m.CallFunction(res, []ast.Expr{
+		machine.Number(1).ToLiteral(),
+	})
+}
+```
+
+Right now supplying and obtaining values are not too convenient, I'm working on
+some wrappers for this.
+
 ## Comparisons with other solutions
 
 There are many ways to implement user scripts in an application.
