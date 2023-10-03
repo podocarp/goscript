@@ -1,4 +1,4 @@
-package machine_test
+package tests
 
 import (
 	"testing"
@@ -9,7 +9,7 @@ import (
 
 // TestArrayDefine test that we can define and index arrays properly
 func TestArrayDefine(t *testing.T) {
-	m := machine.NewMachine(machine.MachineOptSetDebug)
+	m := machine.NewMachine()
 
 	stmt := `func() {
 		c := []string{"as\nd"}

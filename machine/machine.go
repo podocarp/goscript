@@ -429,30 +429,68 @@ func (m *machine) evalFor(n *ast.ForStmt) (*Node, error) {
 	return res, nil
 }
 
+func FlattenFieldList(fieldList []*ast.Field) ([]*ast.Field, error) {
+	res := make([]*ast.Field, 0)
+	for _, field := range fieldList {
+		if field.Names == nil && field.Type == nil {
+			return nil, errors.New("field has undefined Names and Type")
+		}
+
+		if field.Names == nil {
+			// in this case the Type element is used to store the
+			// name of the field
+			name := field.Type.(*ast.Ident)
+			field.Names = []*ast.Ident{name}
+			res = append(res, field)
+			continue
+		}
+
+		if len(field.Names) <= 1 {
+			// it is already correct
+			res = append(res, field)
+			continue
+		}
+
+		for _, name := range field.Names {
+			newField := *field
+			newField.Names = []*ast.Ident{name}
+			res = append(res, &newField)
+		}
+	}
+
+	return res, nil
+}
+
 func (m *machine) applyFunction(fun *Node, args []ast.Expr) (*Node, error) {
 	m.Context = m.Context.NewChildContext("func block")
+	var err error
 
 	n := fun.Value.(*ast.FuncLit)
 	// populate arguments
 	params := n.Type.Params
-	for i, arg := range args {
-		var name string
-		if ident, ok := params.List[i].Type.(*ast.Ident); ok {
-			name = ident.Name
-		} else {
-			return nil, errors.New("cannot parse function param names")
-		}
+	fieldList, err := FlattenFieldList(params.List)
 
-		argNode, err := m.Evaluate(arg)
+	if err != nil {
+		return nil, err
+	}
+
+	for i, param := range fieldList {
+		paramName := param.Names[0].Name
+		if i >= len(args) {
+			return nil, errors.Errorf(
+				"not enough arguments to function at param %s",
+				paramName,
+			)
+		}
+		argNode, err := m.Evaluate(args[i])
 		if err != nil {
 			return nil, errors.WrapPrefix(err, "cannot eval arg", 10)
 		}
-		m.Context.Set(name, argNode)
+		m.Context.Set(paramName, argNode)
 	}
 
 	// evaluate body
 	var res *Node
-	var err error
 	res, err = m.Evaluate(n.Body)
 	if err != nil {
 		return nil, err

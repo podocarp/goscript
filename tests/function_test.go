@@ -1,4 +1,4 @@
-package machine_test
+package tests
 
 import (
 	"go/ast"
@@ -6,37 +6,16 @@ import (
 
 	"github.com/podocarp/goscript/machine"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestMachineSimple(t *testing.T) {
+func TestMachineFunctionsSimple(t *testing.T) {
 	m := machine.NewMachine()
 
-	stmt := "func(a) { return 1 }()"
+	stmt := "func() { return 1 }()"
 	res, err := m.ParseAndEval(stmt)
-	assert.Nil(t, err)
-	assert.EqualValues(t, 1.0, res.Value)
-
-	stmt = `func(a, b) {
-		for i := 0; i < a; i++ {
-			b += i
-		}
-		return b
-	}( 10, 1 )
-	`
-	res, err = m.ParseAndEval(stmt)
-	assert.Nil(t, err, err)
-	assert.EqualValues(t, 46.0, res.Value)
-
-	stmt = `func(a, b) {
-		if (a < b) {
-			return b
-		}
-		return a
-	}( 10, 1 )
-	`
-	res, err = m.ParseAndEval(stmt)
-	assert.Nil(t, err, err)
-	assert.EqualValues(t, 10, res.Value)
+	require.Nil(t, err, err)
+	require.EqualValues(t, 1.0, res.Value)
 }
 
 // TestReturnFunctionLit test that we can return and execute a function literal
@@ -58,7 +37,7 @@ func TestReturnFunctionLit(t *testing.T) {
 func TestFunctionDefAndCall(t *testing.T) {
 	m := machine.NewMachine()
 
-	stmt := `func(a) {
+	stmt := `func() {
 		b := func(c) {
 			return c
 		}
@@ -66,8 +45,45 @@ func TestFunctionDefAndCall(t *testing.T) {
 		return b(100)
 	}()`
 	res, err := m.ParseAndEval(stmt)
-	assert.Nil(t, err)
-	assert.EqualValues(t, 100.0, res.Value)
+	require.Nil(t, err, err)
+	require.EqualValues(t, 100.0, res.Value)
+}
+
+// TestFunctionArgs tests declaring and using function args
+func TestFunctionArgs(t *testing.T) {
+	m := machine.NewMachine()
+
+	// declare without type
+	stmt := `func(a, b) {
+		return b
+	}(1, 2)`
+	res, err := m.ParseAndEval(stmt)
+	require.Nil(t, err, err)
+	require.EqualValues(t, 2, res.Value)
+
+	// declare with one type
+	stmt = `func(a, b float64) {
+		return b
+	}(1, 2)`
+	res, err = m.ParseAndEval(stmt)
+	require.Nil(t, err, err)
+	require.EqualValues(t, 2, res.Value)
+
+	// declare with two types
+	stmt = `func(a float64, b float64) {
+		return a
+	}(1, 2)`
+	res, err = m.ParseAndEval(stmt)
+	require.Nil(t, err, err)
+	require.EqualValues(t, 1, res.Value)
+
+	// extra arguments work
+	stmt = `func(a float64, b float64) {
+		return a
+	}(1, 2, 3, 4, 5)`
+	res, err = m.ParseAndEval(stmt)
+	require.Nil(t, err, err)
+	require.EqualValues(t, 1, res.Value)
 }
 
 // TestFunctionClosure tests that function closures work as expected
@@ -91,7 +107,7 @@ func TestFunctionClosure(t *testing.T) {
 
 // TestFunctionReturn tests that return statements work as expected
 func TestFunctionReturn(t *testing.T) {
-	m := machine.NewMachine(machine.MachineOptSetDebug)
+	m := machine.NewMachine()
 
 	stmt := `func(a) {
 		b := 0
@@ -109,51 +125,8 @@ func TestFunctionReturn(t *testing.T) {
 	assert.EqualValues(t, 6.0, res.Value)
 }
 
-func TestForLoopContext(t *testing.T) {
-	m := machine.NewMachine()
-
-	// the for block and for statment contexts should be separate
-	stmt := `func(a) {
-		for i:= 0; i < b; i++ {
-			b := 10
-		}
-
-		return 1000
-	}(10)`
-	res, err := m.ParseAndEval(stmt)
-	assert.NotNil(t, err, "should have error")
-	assert.Nil(t, res, "should not have result", res)
-
-	stmt = `func(a) {
-		for i:= 0; i < 10; i = i+b {
-			b := 10
-		}
-
-		return 1000
-	}(10)`
-	res, err = m.ParseAndEval(stmt)
-	assert.NotNil(t, err, "should have error")
-	assert.Nil(t, res, "should not have result", res)
-}
-
-func TestIfStmtContext(t *testing.T) {
-	m := machine.NewMachine()
-
-	// the if block and if statment contexts should be separate
-	stmt := `func(a) {
-		if a < b {
-			b := 10
-			return 1000
-		}
-
-		return 1000
-	}(10)`
-	res, err := m.ParseAndEval(stmt)
-	assert.NotNil(t, err, "should have error")
-	assert.Nil(t, res, "should not have result", res)
-}
-
-func TestRecursion(t *testing.T) {
+// TestRecursionBasic tests that recursion works
+func TestRecursionBasic(t *testing.T) {
 	// limit stack size if it is going to overflow
 	m := machine.NewMachine(machine.MachineOptSetMaxDepth(100))
 	stmt := `func() {
@@ -167,8 +140,8 @@ func TestRecursion(t *testing.T) {
 	}()
 	`
 	res, err := m.ParseAndEval(stmt)
-	assert.Nil(t, err, err)
-	assert.EqualValues(t, 1, res.Value)
+	require.Nil(t, err, err)
+	require.EqualValues(t, 1, res.Value)
 
 	stmt = `func() {
 		Fib := func (n) {
@@ -181,6 +154,6 @@ func TestRecursion(t *testing.T) {
 	}()
 	`
 	res, err = m.ParseAndEval(stmt)
-	assert.Nil(t, err, err)
-	assert.EqualValues(t, 8, res.Value)
+	require.Nil(t, err, err)
+	require.EqualValues(t, 8, res.Value)
 }

@@ -1,6 +1,6 @@
 # goscript
 
-A meta circular evaluator for a simple subset of golang.
+A **work in progress** meta circular evaluator for a simple subset of golang.
 It is like the bastard child of golang and javascript.
 I wrote it to support user defined scripts in an application that processed
 streams of metric data.
@@ -22,6 +22,8 @@ There are many ways to implement user scripts in an application.
 One popular method is Lua scripts. Launching a Lua VM is way too heavy for my
 use case. I only needed really simple computations, mostly single passes through
 an array.
+
+TODO: benchmark this
 
 ### Golang interpreters
 
@@ -47,17 +49,38 @@ TODO: test the speed for injecting an array into the context and operating on
 it.
 
 
+## Examples
+
+Think of this as a JS but you are writing it in golang.
+This is valid in `goscript`:
+```go
+func() {
+    Fib := func (n) {
+        if n < 2 {
+            return n
+        }
+        return Fib(n-1) + Fib(n-2)
+    }
+    return Fib(10)
+}()
+```
+Notice how types are not needed, and recursion can be done without pre-defining
+the function variable.
+
+
 ## Differences
 
 This implementation of golang is incorrect in certain small areas but major
 functionality should be correct as enforced in the tests.
-Notable differences from actual golang:
-- No types, they are actively ignored
+
+Missing features from actual golang:
+- No types, they are actively ignored for now
 - No multi return and multi assign
 - All numbers and booleans are actually floats
+- No channels and goroutines
 - No packages and imports
-- You need to wrap scripts in a function because the parser only works on
-  expressions.
+- You need to wrap scripts in a function if you have more than one line of code
+  because the parser only works on expressions.
 
 ##
 
