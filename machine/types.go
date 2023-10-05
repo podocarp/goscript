@@ -6,9 +6,18 @@ import (
 	"strconv"
 
 	"github.com/podocarp/goscript/kind"
+	"golang.org/x/exp/constraints"
 )
 
+type Numeric interface {
+	constraints.Integer | constraints.Float
+}
+
 type Number float64
+
+func ToNumber[T Numeric](val T) Number {
+	return Number(float64(val))
+}
 
 func (n Number) isIntegral() bool {
 	return n == Number(int(n))

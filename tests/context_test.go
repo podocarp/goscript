@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/podocarp/goscript/machine"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestForLoopContext(t *testing.T) {
@@ -19,8 +19,8 @@ func TestForLoopContext(t *testing.T) {
 		return 1000
 	}(10)`
 	res, err := m.ParseAndEval(stmt)
-	assert.NotNil(t, err, "should have error")
-	assert.Nil(t, res, "should not have result", res)
+	require.NotNil(t, err, "should have error")
+	require.Nil(t, res, "should not have result", res)
 
 	stmt = `func(a) {
 		for i:= 0; i < 10; i = i+b {
@@ -30,8 +30,8 @@ func TestForLoopContext(t *testing.T) {
 		return 1000
 	}(10)`
 	res, err = m.ParseAndEval(stmt)
-	assert.NotNil(t, err, "should have error")
-	assert.Nil(t, res, "should not have result", res)
+	require.NotNil(t, err, "should have error")
+	require.Nil(t, res, "should not have result", res)
 }
 
 func TestIfStmtContext(t *testing.T) {
@@ -47,6 +47,19 @@ func TestIfStmtContext(t *testing.T) {
 		return 1000
 	}(10)`
 	res, err := m.ParseAndEval(stmt)
-	assert.NotNil(t, err, "should have error")
-	assert.Nil(t, res, "should not have result", res)
+	require.NotNil(t, err, "should have error")
+	require.Nil(t, res, "should not have result", res)
+}
+
+func TestAddToGlobalContext(t *testing.T) {
+	m := machine.NewMachine()
+	err := m.AddToGlobalContext("b", []int{10})
+	require.Nil(t, err, err)
+
+	stmt := `func(a) {
+		return a + b[0]
+	}(10)`
+	res, err := m.ParseAndEval(stmt)
+	require.Nil(t, err, err)
+	require.EqualValues(t, 20, res.Value)
 }
