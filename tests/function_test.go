@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"go/ast"
 	"testing"
 
 	"github.com/podocarp/goscript/machine"
@@ -24,10 +23,10 @@ func TestReturnFunctionLit(t *testing.T) {
 
 	stmt := "func(a) { return a }"
 	res, err := m.ParseAndEval(stmt)
-	assert.Nil(t, err)
-	callRes, err := m.CallFunction(res, []ast.Expr{
-		machine.Number(1).ToLiteral(),
-	})
+	assert.Nil(t, err, err)
+	arg, err := machine.ValueToNode(1)
+	assert.Nil(t, err, err)
+	callRes, err := m.CallFunction(res, []*machine.Node{arg})
 	assert.Nil(t, err)
 	assert.EqualValues(t, 1.0, callRes.Value)
 }

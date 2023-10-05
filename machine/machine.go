@@ -74,17 +74,12 @@ func (m *Machine) AddToGlobalContext(name string, val any) error {
 	return m.Context.Set(name, node)
 }
 
-func (m *Machine) CallFunction(fun any, args []ast.Expr) (*Node, error) {
-	if funNode, ok := fun.(*Node); ok {
-		if funLit, ok := funNode.Value.(*ast.FuncLit); ok {
-			return m.Evaluate(&ast.CallExpr{
-				Fun:  funLit,
-				Args: args,
-			})
-		} else {
-			return nil, errors.New("the supplied argument is not a function.")
-		}
+func (m *Machine) CallFunction(fun *Node, args []*Node) (*Node, error) {
+	if _, ok := fun.Value.(*ast.FuncLit); ok {
+		return m.applyFunction(fun, args)
 	} else {
-		return nil, errors.New("param \"fun\" must be the result of an Evaluate call.")
+		return nil, errors.New(
+			"the supplied function should be a result from calling Evaluate.",
+		)
 	}
 }

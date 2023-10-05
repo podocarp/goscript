@@ -61,9 +61,6 @@ func (c *context) Update(name string, value *Node) error {
 }
 
 func (c *context) Set(name string, value *Node) error {
-	if _, ok := c.storage[name]; ok {
-		return errors.Errorf("reassigning %s", name)
-	}
 	c.storage[name] = value
 
 	return nil

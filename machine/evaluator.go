@@ -397,7 +397,7 @@ func FlattenFieldList(fieldList []*ast.Field) ([]*ast.Field, error) {
 	return res, nil
 }
 
-func (m *Machine) applyFunction(fun *Node, args []ast.Expr) (*Node, error) {
+func (m *Machine) applyFunction(fun *Node, args []*Node) (*Node, error) {
 	m.Context = m.Context.NewChildContext("func block")
 	var err error
 
@@ -410,19 +410,16 @@ func (m *Machine) applyFunction(fun *Node, args []ast.Expr) (*Node, error) {
 		return nil, err
 	}
 
+	if len(fieldList) > len(args) {
+		return nil, errors.New("not enough arguments to function")
+	}
+
 	for i, param := range fieldList {
 		paramName := param.Names[0].Name
-		if i >= len(args) {
-			return nil, errors.Errorf(
-				"not enough arguments to function at param %s",
-				paramName,
-			)
-		}
-		argNode, err := m.Evaluate(args[i])
 		if err != nil {
 			return nil, errors.WrapPrefix(err, "cannot eval arg", 10)
 		}
-		m.Context.Set(paramName, argNode)
+		m.Context.Set(paramName, args[i])
 	}
 
 	// evaluate body
@@ -439,13 +436,21 @@ func (m *Machine) applyFunction(fun *Node, args []ast.Expr) (*Node, error) {
 func (m *Machine) evalFunctionCall(fun ast.Expr, args []ast.Expr) (*Node, error) {
 	var err error
 	var res *Node
+	nodeArgs := make([]*Node, len(args))
+	for i, arg := range args {
+		n, err := m.Evaluate(arg)
+		if err != nil {
+			return nil, errors.WrapPrefix(err, "error evaluating function arguments", 10)
+		}
+		nodeArgs[i] = n
+	}
 
 	switch n := fun.(type) {
 	case *ast.Ident:
 		fun := m.Context.Get(n.Name)
-		res, err = m.applyFunction(fun, args)
+		res, err = m.applyFunction(fun, nodeArgs)
 	case *ast.FuncLit:
-		res, err = m.applyFunction(m.evalLit(fun), args)
+		res, err = m.applyFunction(m.evalLit(fun), nodeArgs)
 
 	default:
 		return nil, errors.Errorf("unimplemented function type %s", n)
