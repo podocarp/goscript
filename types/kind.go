@@ -50,6 +50,8 @@ func ReflectKindToKind(r reflect.Kind) (Kind, error) {
 	case reflect.Int, reflect.Int8, reflect.Int16,
 		reflect.Int32, reflect.Int64:
 		return Int, nil
+	case reflect.Array, reflect.Slice:
+		return Array, nil
 	default:
 		return Invalid, errors.Errorf("unsupported reflect.Kind %s", r)
 	}
@@ -116,7 +118,7 @@ func (t *_type) Equal(other Type) bool {
 }
 
 func ReflectTypeToType(r reflect.Type) (*_type, error) {
-	if r.Kind() != reflect.Array {
+	if r.Kind() != reflect.Array && r.Kind() != reflect.Slice {
 		// new literal of the same type
 		kind, err := ReflectKindToKind(r.Kind())
 		if err != nil {
@@ -125,7 +127,8 @@ func ReflectTypeToType(r reflect.Type) (*_type, error) {
 		return LiteralOf(kind), nil
 	}
 
-	if r.Elem().Kind() == reflect.Array {
+	if r.Elem().Kind() == reflect.Array || r.Elem().Kind() == reflect.Slice {
+		// array of array
 		elemType, err := ReflectTypeToType(r.Elem())
 		if err != nil {
 			return nil, err
@@ -133,7 +136,7 @@ func ReflectTypeToType(r reflect.Type) (*_type, error) {
 		return ArrayOf(elemType), nil
 	} else {
 		// new array of the same type
-		kind, err := ReflectKindToKind(r.Kind())
+		kind, err := ReflectKindToKind(r.Elem().Kind())
 		if err != nil {
 			return nil, err
 		}

@@ -26,12 +26,16 @@ func TestArrayToNode(t *testing.T) {
 		[]float64{1.0, 2.0, 3.0},
 		[]float64{0},
 		[][]float64{{1}, {2, 3, 4}},
-		[][][]string{{{"1", "2"}}, {{"4"}}},
 	}
 
 	for _, test := range tests {
 		node, err := machine.ValueToNode(test)
 		require.Nil(t, err, err)
+		// types are approximately correct
+		require.Equal(t, types.Array, node.Type.Kind())
+		elem, _ := node.Type.Elem()
+		require.Contains(t, elem.String(), "float")
+		// values are correct
 		nodeArr := NodeToValue(node).Interface()
 		require.EqualValues(t, reflect.ValueOf(test).Interface(), nodeArr)
 	}

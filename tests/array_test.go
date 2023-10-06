@@ -31,7 +31,7 @@ func TestArrayDefine(t *testing.T) {
 }
 
 func TestArrayType(t *testing.T) {
-	m := machine.NewMachine(machine.MachineOptSetDebug)
+	m := machine.NewMachine()
 
 	// empty array is ok
 	stmt := `func() {

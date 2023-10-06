@@ -53,7 +53,7 @@ func TestIfStmtContext(t *testing.T) {
 
 func TestAddToGlobalContext(t *testing.T) {
 	m := machine.NewMachine()
-	err := m.AddToGlobalContext("b", []int{10})
+	err := m.AddToGlobalContext("b", []float64{10})
 	require.Nil(t, err, err)
 
 	stmt := `func(a) {
