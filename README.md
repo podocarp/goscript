@@ -36,6 +36,9 @@ func() {
 Notice how types are not needed, and recursion can be done without pre-defining
 the function variable.
 
+Type promotions are also in place in a style of C/C++, most notably you can do
+add ints to floats with no explicit casting. All in the name of convenience.
+
 ## Usage
 
 Create a machine and evaluate code:
@@ -122,9 +125,11 @@ Missing features from actual golang:
   because the parser only works on expressions.
 - No stdlib. No `make` or `fmt.Println` yet.
 
+Builtin functions implemented:
+- len
+- append
+
 TODO:
 
 - Maps
-- Inject values
 - Basic runtime typing
-- Actual booleans
