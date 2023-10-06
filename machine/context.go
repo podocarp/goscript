@@ -79,6 +79,6 @@ func (c *context) String() string {
 	sort.Slice(strs, func(i, j int) bool {
 		return i < j
 	})
-	return fmt.Sprintf("Context \"%s\": %s", c.Name, strings.Join(strs, " | "))
+	return fmt.Sprintf("\"%s\": {%s}", c.Name, strings.Join(strs, " , "))
 
 }

@@ -4,12 +4,12 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/podocarp/goscript/kind"
 	"github.com/podocarp/goscript/machine"
+	"github.com/podocarp/goscript/types"
 	"github.com/stretchr/testify/require"
 )
 
-func TestWrapInNode(t *testing.T) {
+func TestValueToNode(t *testing.T) {
 	tests := []any{
 		100, "100", 100.0, uint(100),
 	}
@@ -21,7 +21,7 @@ func TestWrapInNode(t *testing.T) {
 	}
 }
 
-func TestWrapArrayInNode(t *testing.T) {
+func TestArrayToNode(t *testing.T) {
 	tests := []any{
 		[]float64{1.0, 2.0, 3.0},
 		[]float64{0},
@@ -38,14 +38,14 @@ func TestWrapArrayInNode(t *testing.T) {
 }
 
 func NodeToValue(n *machine.Node) reflect.Value {
-	switch n.Kind {
-	case kind.STRING:
+	switch n.Type.Kind() {
+	case types.String:
 		return reflect.ValueOf(n.Value)
-	case kind.FLOAT:
+	case types.Float:
 		return reflect.ValueOf(n.Value.(machine.Number).ToFloat())
-	case kind.FUNC:
+	case types.Func:
 		return reflect.ValueOf(n.Value)
-	case kind.ARRAY:
+	case types.Array:
 		arr := n.Value.([]*machine.Node)
 		length := len(arr)
 		if length == 0 {

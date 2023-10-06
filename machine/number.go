@@ -5,7 +5,7 @@ import (
 	"go/token"
 	"strconv"
 
-	"github.com/podocarp/goscript/kind"
+	"github.com/podocarp/goscript/types"
 	"golang.org/x/exp/constraints"
 )
 
@@ -36,7 +36,7 @@ func (n Number) ToLiteral() *ast.BasicLit {
 
 func (n Number) ToNode() *Node {
 	return &Node{
-		Kind:  kind.FLOAT,
+		Type:  types.FloatType,
 		Value: n,
 	}
 }

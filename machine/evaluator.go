@@ -8,7 +8,7 @@ import (
 	"strconv"
 
 	"github.com/go-errors/errors"
-	"github.com/podocarp/goscript/kind"
+	"github.com/podocarp/goscript/types"
 )
 
 // Evaluate evaluates a node and produces a literal
@@ -22,9 +22,8 @@ func (m *Machine) Evaluate(expr ast.Node) (*Node, error) {
 
 	if m.debugFlag {
 		fmt.Printf(
-			"---evaluating %s\n", reflect.TypeOf(expr),
+			"---Evaluating %s\n", reflect.TypeOf(expr),
 		)
-		ast.Print(token.NewFileSet(), expr)
 	}
 
 	switch n := expr.(type) {
@@ -32,65 +31,34 @@ func (m *Machine) Evaluate(expr ast.Node) (*Node, error) {
 		node = m.evalLit(n)
 	case *ast.CompositeLit:
 		node, err = m.evalComposite(n)
-		if err != nil {
-			return nil, err
-		}
 	case *ast.Ident:
 		node = m.Context.Get(n.Name)
 		if node == nil {
-			return nil, errors.Errorf("cannot find identifier %s", n.Name)
+			err = errors.Errorf("cannot find identifier %s", n.Name)
 		}
 	case *ast.IndexExpr:
-		arrNode, err := m.Evaluate(n.X)
-		if err != nil {
-			return nil, err
-		}
-		arr := arrNode.Value.([]*Node)
-		indexNode, err := m.Evaluate(n.Index)
-		if err != nil {
-			return nil, err
-		}
-		index := indexNode.Value.(Number)
-		if !index.isIntegral() {
-			return nil, errors.New("index is not an integer")
-		}
-		node = arr[int(index)]
+		node, err = m.evalIndex(n)
 	case *ast.DeclStmt:
 		node, err = m.evalDecl(n)
-		if err != nil {
-			return nil, err
-		}
 	case *ast.AssignStmt:
 		node, err = m.evalAssign(n)
-		if err != nil {
-			return nil, err
-		}
 	case *ast.ParenExpr:
 		node, err = m.Evaluate(n.X)
-		if err != nil {
-			return nil, err
-		}
 	case *ast.ExprStmt:
 		node, err = m.Evaluate(n.X)
-		if err != nil {
-			return nil, err
-		}
 	case *ast.BinaryExpr:
 		node, err = m.evalBinary(n)
-		if err != nil {
-			return nil, err
-		}
 	case *ast.UnaryExpr:
 		node, err = m.evalUnary(n)
-		if err != nil {
-			return nil, err
-		}
 	case *ast.IncDecStmt:
 		var tok token.Token
 		if n.Tok == token.INC {
 			tok = token.ADD_ASSIGN
 		} else if n.Tok == token.DEC {
 			tok = token.SUB_ASSIGN
+		} else {
+			err = errors.New("impossible inc dec stmt!")
+			break
 		}
 		node, err = m.evalAssign(&ast.AssignStmt{
 			Lhs: []ast.Expr{n.X},
@@ -107,17 +75,18 @@ func (m *Machine) Evaluate(expr ast.Node) (*Node, error) {
 		node, err = m.evalFor(n)
 	case *ast.ReturnStmt:
 		node, err = m.Evaluate(n.Results[0])
-		if err != nil {
-			return nil, err
-		}
 		node.IsReturnValue = true
 	default:
-		return nil, errors.Errorf("unknown type %v", reflect.TypeOf(expr))
+		err = errors.Errorf("unknown type %v", reflect.TypeOf(expr))
 	}
 
 	if m.debugFlag {
 		fmt.Printf(
-			"%s, evaluation result: %v\n", m.Context.String(), node,
+			"---Finished evaluating %v, result: %v, context: {%s}, err: %v\n",
+			reflect.TypeOf(expr),
+			node,
+			m.Context.String(),
+			err,
 		)
 	}
 
@@ -156,9 +125,6 @@ func (m *Machine) evalAssign(stmt *ast.AssignStmt) (*Node, error) {
 			break
 		}
 		err = m.Context.Update(name, node)
-		if err != nil {
-			return nil, err
-		}
 	case token.SUB_ASSIGN: // -=
 		node, err = m.evalBinary(&ast.BinaryExpr{
 			X:  stmt.Lhs[0],
@@ -169,9 +135,6 @@ func (m *Machine) evalAssign(stmt *ast.AssignStmt) (*Node, error) {
 			break
 		}
 		err = m.Context.Update(name, node)
-		if err != nil {
-			return nil, err
-		}
 	case token.MUL_ASSIGN: // *=
 		node, err = m.evalBinary(&ast.BinaryExpr{
 			X:  stmt.Lhs[0],
@@ -182,9 +145,6 @@ func (m *Machine) evalAssign(stmt *ast.AssignStmt) (*Node, error) {
 			break
 		}
 		err = m.Context.Update(name, node)
-		if err != nil {
-			return nil, err
-		}
 	case token.QUO_ASSIGN: // /=
 		node, err = m.evalBinary(&ast.BinaryExpr{
 			X:  stmt.Lhs[0],
@@ -195,9 +155,6 @@ func (m *Machine) evalAssign(stmt *ast.AssignStmt) (*Node, error) {
 			break
 		}
 		err = m.Context.Update(name, node)
-		if err != nil {
-			return nil, err
-		}
 	case token.REM_ASSIGN: // %=
 		node, err = m.evalBinary(&ast.BinaryExpr{
 			X:  stmt.Lhs[0],
@@ -208,26 +165,20 @@ func (m *Machine) evalAssign(stmt *ast.AssignStmt) (*Node, error) {
 			break
 		}
 		err = m.Context.Update(name, node)
-		if err != nil {
-			return nil, err
-		}
 	case token.ASSIGN: // =
 		node, err = m.Evaluate(stmt.Rhs[0])
 		if err != nil {
 			return nil, err
 		}
 		err = m.Context.Update(name, node)
-		if err != nil {
-			return nil, err
-		}
 	case token.DEFINE: // :=
 		node, err = m.Evaluate(stmt.Rhs[0])
-		err = m.Context.Set(name, node)
 		if err != nil {
 			return nil, err
 		}
+		err = m.Context.Set(name, node)
 	default:
-		return nil, errors.Errorf("unknown assign token %s", stmt.Tok.String())
+		err = errors.Errorf("unknown assign token %s", stmt.Tok.String())
 	}
 
 	return node, err
@@ -253,40 +204,88 @@ func (m *Machine) evalDecl(n *ast.DeclStmt) (*Node, error) {
 	return res, nil
 }
 
+func (m *Machine) evalIndex(lit *ast.IndexExpr) (*Node, error) {
+	arrNode, err := m.Evaluate(lit.X)
+	if err != nil {
+		return nil, err
+	}
+	arr := arrNode.Value.([]*Node)
+	indexNode, err := m.Evaluate(lit.Index)
+	if err != nil {
+		return nil, err
+	}
+	index := indexNode.Value.(Number)
+	if !index.isIntegral() {
+		err = errors.New("index is not an integer")
+	}
+	return arr[int(index)], nil
+}
+
 func (m *Machine) evalComposite(lit *ast.CompositeLit) (*Node, error) {
 	switch n := lit.Type.(type) {
 	case *ast.ArrayType:
-		return m.createArray(n.Elt, lit.Elts)
+		return m.evalArray(n.Elt, lit.Elts)
+	default:
+		return nil, errors.Errorf("unsupported composite type %v", n)
 	}
-	return nil, nil
 }
 
-func (m *Machine) createArray(elt ast.Node, elems []ast.Expr) (*Node, error) {
-	value := make([]*Node, 0)
-	switch n := elt.(type) {
+// stringToType converts an ast.Ident.Name string into the corresponding type.
+func stringToType(str string) (types.Type, error) {
+	switch str {
+	case "string":
+		return types.StringType, nil
+	case "float64":
+		return types.FloatType, nil
+	default:
+		return nil, errors.Errorf("unknown type identifier %s", str)
+	}
+}
+
+func (m *Machine) evalArray(elementType ast.Node, elems []ast.Expr) (*Node, error) {
+	res := make([]*Node, 0, len(elems))
+	var elemType types.Type
+	var err error
+	switch n := elementType.(type) {
 	case *ast.Ident:
+		elemType, err = stringToType(n.Name)
+		if err != nil {
+			return nil, err
+		}
+		// This is an array of elements that are not arrays.
 		for _, elem := range elems {
 			elemNode, err := m.Evaluate(elem)
 			if err != nil {
 				return nil, err
 			}
-			value = append(value, elemNode)
+			if !elemNode.Type.Equal(elemType) {
+				return nil, errors.Errorf(
+					"array type mismatch, element %v is not a %v",
+					elemNode,
+					elemType,
+				)
+			}
+			res = append(res, elemNode)
 		}
 	case *ast.ArrayType:
-		// array of arrays. we have to eval each elem again
+		// Array of arrays. we have to eval each elem again
 		for _, elem := range elems {
 			elemLit := elem.(*ast.CompositeLit)
-			elemNode, err := m.createArray(n.Elt, elemLit.Elts)
+			elemNode, err := m.evalArray(n.Elt, elemLit.Elts)
 			if err != nil {
 				return nil, err
 			}
-			value = append(value, elemNode)
+			elemType = elemNode.Type
+			if err != nil {
+				return nil, err
+			}
+			res = append(res, elemNode)
 		}
 	}
 
 	return &Node{
-		Kind:  kind.ARRAY,
-		Value: value,
+		Type:  types.ArrayOf(elemType),
+		Value: res,
 	}, nil
 }
 
@@ -435,7 +434,6 @@ func (m *Machine) applyFunction(fun *Node, args []*Node) (*Node, error) {
 
 func (m *Machine) evalFunctionCall(fun ast.Expr, args []ast.Expr) (*Node, error) {
 	var err error
-	var res *Node
 	nodeArgs := make([]*Node, len(args))
 	for i, arg := range args {
 		n, err := m.Evaluate(arg)
@@ -445,18 +443,11 @@ func (m *Machine) evalFunctionCall(fun ast.Expr, args []ast.Expr) (*Node, error)
 		nodeArgs[i] = n
 	}
 
-	switch n := fun.(type) {
-	case *ast.Ident:
-		fun := m.Context.Get(n.Name)
-		res, err = m.applyFunction(fun, nodeArgs)
-	case *ast.FuncLit:
-		res, err = m.applyFunction(m.evalLit(fun), nodeArgs)
-
-	default:
-		return nil, errors.Errorf("unimplemented function type %s", n)
+	funNode, err := m.Evaluate(fun)
+	if err != nil {
+		return nil, err
 	}
-
-	return res, err
+	return m.applyFunction(funNode, nodeArgs)
 }
 
 func (m *Machine) evalUnary(expr *ast.UnaryExpr) (*Node, error) {
@@ -465,8 +456,8 @@ func (m *Machine) evalUnary(expr *ast.UnaryExpr) (*Node, error) {
 		return nil, err
 	}
 
-	if node.Kind != kind.FLOAT {
-		return nil, errors.Errorf("unsupported operand types %v", node.Kind)
+	if node.Type.Kind() != types.Float {
+		return nil, errors.Errorf("unsupported operand types %v", node.Type)
 	}
 
 	operand := node.Value.(Number).ToFloat()
@@ -497,11 +488,11 @@ func (m *Machine) evalBinary(expr *ast.BinaryExpr) (*Node, error) {
 		return nil, err
 	}
 
-	if (nodeX.Kind != kind.FLOAT) || (nodeY.Kind != kind.FLOAT) {
+	if (nodeX.Type.Kind() != types.Float) || (nodeY.Type.Kind() != types.Float) {
 		return nil, errors.Errorf(
 			"unsupported operand types %v %v",
-			nodeX.Kind,
-			nodeY.Kind,
+			nodeX.Type,
+			nodeY.Type,
 		)
 	}
 
@@ -584,19 +575,19 @@ func (m *Machine) evalLit(lit ast.Node) *Node {
 		switch n.Kind {
 		case token.FLOAT, token.INT:
 			return &Node{
-				Kind:  kind.FLOAT,
+				Type:  types.FloatType,
 				Value: LiteralToNumber(n),
 			}
 		case token.CHAR, token.STRING:
 			val, _ := strconv.Unquote(n.Value)
 			return &Node{
-				Kind:  kind.STRING,
+				Type:  types.StringType,
 				Value: val,
 			}
 		}
 	case *ast.FuncLit:
 		return &Node{
-			Kind:    kind.FUNC,
+			Type:    types.FuncType,
 			Value:   lit,
 			Context: m.Context,
 		}
