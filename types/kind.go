@@ -26,6 +26,7 @@ const (
 
 	Array
 	Func
+	Builtin
 )
 
 var kindStr = []string{
@@ -35,6 +36,7 @@ var kindStr = []string{
 	Int:     "int",
 	Array:   "array",
 	Func:    "function",
+	Builtin: "builtin",
 }
 
 func (k Kind) String() string {
@@ -57,12 +59,14 @@ func ReflectKindToKind(r reflect.Kind) (Kind, error) {
 	}
 }
 
+// Predefined types for convenience
 var (
 	StringType Type = LiteralOf(String)
 	FloatType       = LiteralOf(Float)
 	IntType         = LiteralOf(Int)
 	// TODO: func should contain parameter's types
-	FuncType = LiteralOf(String)
+	FuncType    = LiteralOf(Func)
+	BuiltinType = LiteralOf(Builtin)
 )
 
 type _type struct {

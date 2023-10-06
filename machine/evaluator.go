@@ -416,6 +416,10 @@ func (m *Machine) applyFunction(fun *Node, args []*Node) (*Node, error) {
 	m.Context = m.Context.NewChildContext("func block")
 	var err error
 
+	if fun.Type.Kind() == types.Builtin {
+		return m.CallBuiltin(fun, args)
+	}
+
 	n := fun.Value.(*ast.FuncLit)
 	// populate arguments
 	params := n.Type.Params

@@ -78,3 +78,63 @@ func TestArrayType(t *testing.T) {
 	res, err = m.ParseAndEval(stmt)
 	require.NotNil(t, err, err)
 }
+
+// func TestArrayMake(t *testing.T) {
+// 	m := machine.NewMachine(machine.MachineOptSetDebug)
+//
+// 	stmt := `func() {
+// 		c := make([]float64, 1)
+// 		return c
+// 	}()
+// 	`
+// 	res, err := m.ParseAndEval(stmt)
+// 	require.Nil(t, err, err)
+// 	require.EqualValues(t, 1, res.Value)
+//
+// }
+
+func TestArrayAppend(t *testing.T) {
+	m := machine.NewMachine(machine.MachineOptSetDebug)
+
+	stmt := `func() {
+		c := []float64{ }
+		c = append(c, 1)
+		return c[0]
+	}()
+	`
+	res, err := m.ParseAndEval(stmt)
+	require.Nil(t, err, err)
+	require.EqualValues(t, 1, res.Value)
+
+}
+
+func TestArrayLen(t *testing.T) {
+	m := machine.NewMachine(machine.MachineOptSetDebug)
+
+	stmt := `func() {
+		c := []float64{1, 2,3 }
+		return len(c)
+	}()
+	`
+	res, err := m.ParseAndEval(stmt)
+	require.Nil(t, err, err)
+	require.EqualValues(t, 3, res.Value)
+
+	stmt = `func() {
+		c := []float64{}
+		return len(c)
+	}()
+	`
+	res, err = m.ParseAndEval(stmt)
+	require.Nil(t, err, err)
+	require.EqualValues(t, 0, res.Value)
+
+	stmt = `func() {
+		c := [][]float64{ {}, {1, 2, 3, 4}, {2} }
+		return len(c)
+	}()
+	`
+	res, err = m.ParseAndEval(stmt)
+	require.Nil(t, err, err)
+	require.EqualValues(t, 3, res.Value)
+}

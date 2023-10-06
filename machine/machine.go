@@ -34,6 +34,7 @@ func NewMachine(opts ...MachineOpt) *Machine {
 		Context:  NewContext("global"),
 		maxDepth: math.MaxInt,
 	}
+	m.AddBuiltinsToContext()
 
 	for _, o := range opts {
 		o(m)
