@@ -32,13 +32,22 @@ func valueToNodeHelper(val reflect.Value) (*Node, error) {
 			Value: val.String(),
 		}, nil
 	case reflect.Float32, reflect.Float64:
-		return Number(val.Float()).ToNode(), nil
+		return &Node{
+			Type:  types.FloatType,
+			Value: val.Float(),
+		}, nil
 	case reflect.Uint, reflect.Uint8,
 		reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		return Number(val.Uint()).ToNode(), nil
+		return &Node{
+			Type:  types.UintType,
+			Value: val.Uint(),
+		}, nil
 	case reflect.Int, reflect.Int8,
 		reflect.Int16, reflect.Int32, reflect.Int64:
-		return Number(val.Int()).ToNode(), nil
+		return &Node{
+			Type:  types.IntType,
+			Value: val.Int(),
+		}, nil
 	case reflect.Array, reflect.Slice:
 		res := make([]*Node, val.Len())
 		val.Type().Elem()
@@ -89,10 +98,14 @@ func (n *Node) String() string {
 		val = arrToString(n.Value.([]*Node))
 	case types.Float:
 		val = fmt.Sprint(n.Value)
+	case types.Int:
+		val = fmt.Sprint(n.Value)
 	case types.String:
 		val = strconv.Quote(fmt.Sprint(n.Value))
 	case types.Func:
 		val = "λ"
+	case types.Builtin:
+		val = "builtin"
 	default:
 		return "unknown type"
 	}
@@ -105,4 +118,58 @@ func (n *Node) String() string {
 		n.Type.String(),
 		val,
 	)
+}
+
+func (n *Node) ToInt() (int64, error) {
+	switch n.Type.Kind() {
+	case types.Float:
+		return int64(n.Value.(float64)), nil
+	case types.Int:
+		return n.Value.(int64), nil
+	case types.Uint:
+		return int64(n.Value.(uint64)), nil
+	default:
+		return 0, errors.Errorf("cannot convert type %v to int", n.Type)
+	}
+}
+
+func (n *Node) ToFloat() (float64, error) {
+	switch n.Type.Kind() {
+	case types.Float:
+		return n.Value.(float64), nil
+	case types.Int:
+		return float64(n.Value.(int64)), nil
+	case types.Uint:
+		return float64(n.Value.(uint64)), nil
+	default:
+		return 0, errors.Errorf("cannot convert type %v to float", n.Type)
+	}
+}
+
+func NewBoolNode(val bool) *Node {
+	return &Node{
+		Type:  types.BoolType,
+		Value: val,
+	}
+}
+
+func NewFloatNode(val float64) *Node {
+	return &Node{
+		Type:  types.FloatType,
+		Value: val,
+	}
+}
+
+func NewIntNode(val int64) *Node {
+	return &Node{
+		Type:  types.IntType,
+		Value: val,
+	}
+}
+
+func NewUintNode(val uint64) *Node {
+	return &Node{
+		Type:  types.UintType,
+		Value: val,
+	}
 }

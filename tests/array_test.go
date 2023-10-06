@@ -31,30 +31,43 @@ func TestArrayDefine(t *testing.T) {
 }
 
 func TestArrayType(t *testing.T) {
-	m := machine.NewMachine()
+	m := machine.NewMachine(machine.MachineOptSetDebug)
+	var stmt string
+	var err error
+	var res *machine.Node
 
 	// empty array is ok
-	stmt := `func() {
-		c := []float64{ }
-		return c
-	}()
-	`
-	res, err := m.ParseAndEval(stmt)
+	stmt = `func() {
+	 	c := []float64{ }
+	 	return c
+	 }()
+	 `
+	res, err = m.ParseAndEval(stmt)
 	require.Nil(t, err, err)
 	require.EqualValues(t, []*machine.Node{}, res.Value)
 
+	// normal array is ok
+	stmt = `func() {
+	 	c := []float64{1}
+	 	return c[0]
+	 }()
+	 `
+	res, err = m.ParseAndEval(stmt)
+	require.Nil(t, err, err)
+	require.EqualValues(t, 1, res.Value)
+
 	// type mismatch is not ok
 	stmt = `func() {
-		c := []float64{ "1" }
-		return c[0]
-	}()
+	 	c := []float64{ "1" }
+	 	return c[0]
+	 }()
 	`
 	res, err = m.ParseAndEval(stmt)
 	require.NotNil(t, err, err)
 	stmt = `func() {
-		c := []float64{ 1, 2, "3" }
-		return c[0]
-	}()
+	 	c := []float64{ 1, 2, "3" }
+	 	return c[0]
+	 }()
 	`
 	res, err = m.ParseAndEval(stmt)
 	require.NotNil(t, err, err)
@@ -94,7 +107,7 @@ func TestArrayType(t *testing.T) {
 // }
 
 func TestArrayAppend(t *testing.T) {
-	m := machine.NewMachine(machine.MachineOptSetDebug)
+	m := machine.NewMachine()
 
 	stmt := `func() {
 		c := []float64{ }
@@ -109,7 +122,7 @@ func TestArrayAppend(t *testing.T) {
 }
 
 func TestArrayLen(t *testing.T) {
-	m := machine.NewMachine(machine.MachineOptSetDebug)
+	m := machine.NewMachine()
 
 	stmt := `func() {
 		c := []float64{1, 2,3 }

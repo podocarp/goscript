@@ -46,7 +46,7 @@ func NodeToValue(n *machine.Node) reflect.Value {
 	case types.String:
 		return reflect.ValueOf(n.Value)
 	case types.Float:
-		return reflect.ValueOf(n.Value.(machine.Number).ToFloat())
+		return reflect.ValueOf(n.Value.(float64))
 	case types.Func:
 		return reflect.ValueOf(n.Value)
 	case types.Array:

@@ -53,5 +53,5 @@ func Len(args []*Node) (*Node, error) {
 		return nil, errors.Errorf("unsupported type %v for len", arg.Type)
 	}
 
-	return Number(res).ToNode(), nil
+	return NewIntNode(int64(res)), nil
 }

@@ -23,6 +23,8 @@ const (
 	String
 	Float
 	Int
+	Uint
+	Bool
 
 	Array
 	Func
@@ -34,6 +36,9 @@ var kindStr = []string{
 	String:  "string",
 	Float:   "float",
 	Int:     "int",
+	Uint:    "uint",
+	Bool:    "bool",
+
 	Array:   "array",
 	Func:    "function",
 	Builtin: "builtin",
@@ -41,6 +46,10 @@ var kindStr = []string{
 
 func (k Kind) String() string {
 	return kindStr[k]
+}
+
+func (k Kind) IsNumeric() bool {
+	return k == Float || k == Int || k == Uint
 }
 
 func ReflectKindToKind(r reflect.Kind) (Kind, error) {
@@ -64,14 +73,17 @@ var (
 	StringType Type = LiteralOf(String)
 	FloatType       = LiteralOf(Float)
 	IntType         = LiteralOf(Int)
+	UintType        = LiteralOf(Uint)
+	BoolType        = LiteralOf(Bool)
 	// TODO: func should contain parameter's types
 	FuncType    = LiteralOf(Func)
 	BuiltinType = LiteralOf(Builtin)
 )
 
 type _type struct {
-	kind Kind
-	elt  Type
+	kind  Kind
+	elt   Type
+	islit bool
 }
 
 func LiteralOf(kind Kind) *_type {

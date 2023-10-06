@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-errors/errors"
 	"github.com/podocarp/goscript/types"
+	"golang.org/x/exp/constraints"
 )
 
 // Evaluate evaluates a node and produces a literal
@@ -48,10 +49,7 @@ func (m *Machine) Evaluate(expr ast.Node) (*Node, error) {
 	case *ast.IfStmt:
 		node, err = m.evalIf(n)
 	case *ast.Ident:
-		node = m.Context.Get(n.Name)
-		if node == nil {
-			err = errors.Errorf("cannot find identifier %s", n.Name)
-		}
+		node, err = m.evalIdent(n)
 	case *ast.IndexExpr:
 		node, err = m.evalIndex(n)
 	case *ast.ParenExpr:
@@ -81,15 +79,31 @@ func (m *Machine) Evaluate(expr ast.Node) (*Node, error) {
 	return node, err
 }
 
+func (m *Machine) evalIdent(lit *ast.Ident) (*Node, error) {
+	switch lit.Name {
+	case "true":
+		return NewBoolNode(true), nil
+	case "false":
+		return NewBoolNode(false), nil
+	}
+
+	node := m.Context.Get(lit.Name)
+	if node == nil {
+		return nil, errors.Errorf("cannot find identifier %s", lit.Name)
+	}
+	return node, nil
+}
+
 func (m *Machine) evalLit(lit ast.Node) *Node {
 	switch n := lit.(type) {
 	case *ast.BasicLit:
 		switch n.Kind {
-		case token.FLOAT, token.INT:
-			return &Node{
-				Type:  types.FloatType,
-				Value: LiteralToNumber(n),
-			}
+		case token.FLOAT:
+			val, _ := strconv.ParseFloat(n.Value, 64)
+			return NewFloatNode(val)
+		case token.INT:
+			val, _ := strconv.ParseInt(n.Value, 10, 64)
+			return NewIntNode(val)
 		case token.CHAR, token.STRING:
 			val, _ := strconv.Unquote(n.Value)
 			return &Node{
@@ -228,9 +242,9 @@ func (m *Machine) evalIndex(lit *ast.IndexExpr) (*Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	index := indexNode.Value.(Number)
-	if !index.isIntegral() {
-		err = errors.New("index is not an integer")
+	index, err := indexNode.ToInt()
+	if err != nil {
+		return nil, err
 	}
 	return arr[int(index)], nil
 }
@@ -275,11 +289,20 @@ func (m *Machine) evalArray(elementType ast.Node, elems []ast.Expr) (*Node, erro
 				return nil, err
 			}
 			if !elemNode.Type.Equal(elemType) {
-				return nil, errors.Errorf(
-					"array type mismatch, element %v is not a %v",
-					elemNode,
-					elemType,
-				)
+				// try to promote types
+				if elemType.Kind() == types.Float {
+					elemNode.Value, err = elemNode.ToFloat()
+					elemNode.Type = types.FloatType
+					if err != nil {
+						return nil, err
+					}
+				} else {
+					return nil, errors.Errorf(
+						"array type mismatch, element %v is not a %v",
+						elemNode,
+						elemType,
+					)
+				}
 			}
 			res = append(res, elemNode)
 		}
@@ -321,7 +344,11 @@ func (m *Machine) evalIf(n *ast.IfStmt) (*Node, error) {
 
 	m.Context = blockContext
 	var res *Node
-	if isTruthy(cond) {
+	if cond.Type.Kind() != types.Bool {
+		return nil, errors.New("if condition evaluated to a non-boolean")
+	}
+
+	if cond.Value.(bool) {
 		res, err = m.Evaluate(n.Body)
 	} else if n.Else != nil {
 		res, err = m.Evaluate(n.Else)
@@ -355,7 +382,10 @@ func (m *Machine) evalFor(n *ast.ForStmt) (*Node, error) {
 		if err != nil {
 			return nil, errors.WrapPrefix(err, "cannot eval for cond block", 10)
 		}
-		if !isTruthy(cond) {
+		if cond.Type.Kind() != types.Bool {
+			return nil, errors.New("for condition evaluated to a non-boolean")
+		}
+		if !(cond.Value.(bool)) {
 			break
 		}
 
@@ -476,26 +506,26 @@ func (m *Machine) evalUnary(expr *ast.UnaryExpr) (*Node, error) {
 		return nil, err
 	}
 
-	if node.Type.Kind() != types.Float {
-		return nil, errors.Errorf("unsupported operand types %v", node.Type)
-	}
-
-	operand := node.Value.(Number).ToFloat()
-	var r float64
 	switch expr.Op {
 	case token.SUB:
-		r = -operand
-	case token.NOT:
-		if isTruthyFloat(operand) {
-			r = 0
-		} else {
-			r = 1
+		switch node.Type.Kind() {
+		case types.Float:
+			return NewFloatNode(-node.Value.(float64)), nil
+		case types.Int:
+			return NewIntNode(-node.Value.(int64)), nil
+		case types.Uint:
+			return NewUintNode(-node.Value.(uint64)), nil
+		default:
+			return nil, errors.Errorf("unsupported operand types %v", node.Type)
 		}
+	case token.NOT:
+		if node.Type.Kind() != types.Bool {
+			return nil, errors.Errorf("unsupported operand types %v", node.Type)
+		}
+		return NewBoolNode(!node.Value.(bool)), nil
 	default:
-		return nil, errors.New("Operation not supported")
+		return nil, errors.New("operation not supported")
 	}
-
-	return Number(r).ToNode(), nil
 }
 
 func (m *Machine) evalIncDec(expr *ast.IncDecStmt) (*Node, error) {
@@ -510,12 +540,100 @@ func (m *Machine) evalIncDec(expr *ast.IncDecStmt) (*Node, error) {
 	}
 	return m.Evaluate(&ast.AssignStmt{
 		Lhs: []ast.Expr{expr.X},
-		Rhs: []ast.Expr{Number(1).ToLiteral()},
+		Rhs: []ast.Expr{
+			&ast.BasicLit{
+				Kind:  token.INT,
+				Value: "1",
+			},
+		},
 		Tok: tok,
 	})
 }
 
+func (m *Machine) evalBool(expr *ast.BinaryExpr) (*Node, error) {
+	nodeX, err := m.Evaluate(expr.X)
+	if err != nil {
+		return nil, err
+	}
+	if nodeX.Type.Kind() != types.Bool {
+		return nil, errors.Errorf(
+			"left operand type %v is not boolean",
+			nodeX.Type,
+		)
+	}
+
+	// short circuit
+	if expr.Op == token.LOR && nodeX.Value.(bool) {
+		return NewBoolNode(true), nil
+	} else if expr.Op == token.LAND && !nodeX.Value.(bool) {
+		return NewBoolNode(false), nil
+	}
+
+	nodeY, err := m.Evaluate(expr.Y)
+	if err != nil {
+		return nil, err
+	}
+	if nodeY.Type.Kind() != types.Bool {
+		return nil, errors.Errorf(
+			"right operand type %v is not boolean",
+			nodeX.Type,
+		)
+	}
+
+	if expr.Op == token.LOR {
+		return NewBoolNode(nodeY.Value.(bool)), nil
+	} else if expr.Op == token.LAND {
+		return NewBoolNode(nodeY.Value.(bool)), nil
+	} else {
+		return nil, errors.Errorf("impossible boolean op %v", expr.Op)
+	}
+}
+
+type Numeric interface {
+	constraints.Integer | constraints.Float
+}
+
+func binop[T Numeric](op token.Token, operand1, operand2 T) T {
+	switch op {
+	case token.ADD: // +
+		return operand1 + operand2
+	case token.SUB: // -
+		return operand1 - operand2
+	case token.MUL: // *
+		return operand1 * operand2
+	case token.QUO: // /
+		return operand1 / operand2
+	case token.REM: // %
+		return T(int64(operand1) % int64(operand2))
+	default:
+		return 0
+	}
+}
+
+func bincomp[T Numeric](op token.Token, operand1, operand2 T) bool {
+	switch op {
+	case token.GTR: // >
+		return operand1 > operand2
+	case token.GEQ: // >
+		return operand1 > operand2
+	case token.LSS: // <
+		return operand1 < operand2
+	case token.LEQ: // <=
+		return operand1 <= operand2
+	case token.EQL: // ==
+		return operand1 == operand2
+	case token.NEQ: // !=
+		return operand1 != operand2
+	default:
+		return false
+	}
+}
+
 func (m *Machine) evalBinary(expr *ast.BinaryExpr) (*Node, error) {
+	if expr.Op == token.LAND || expr.Op == token.LOR {
+		return m.evalBool(expr)
+	}
+
 	nodeX, err := m.Evaluate(expr.X)
 	if err != nil {
 		return nil, err
@@ -525,83 +643,52 @@ func (m *Machine) evalBinary(expr *ast.BinaryExpr) (*Node, error) {
 		return nil, err
 	}
 
-	if (nodeX.Type.Kind() != types.Float) || (nodeY.Type.Kind() != types.Float) {
+	if !nodeX.Type.Kind().IsNumeric() || !nodeY.Type.Kind().IsNumeric() {
 		return nil, errors.Errorf(
-			"unsupported operand types %v %v",
+			"unsupported operand type %v %v",
 			nodeX.Type,
 			nodeY.Type,
 		)
 	}
 
-	operand1 := nodeX.Value.(Number).ToFloat()
-	operand2 := nodeY.Value.(Number).ToFloat()
-	var r float64
 	switch expr.Op {
-	case token.ADD: // +
-		r = operand1 + operand2
-	case token.SUB: // -
-		r = operand1 - operand2
-	case token.MUL: // *
-		r = operand1 * operand2
-	case token.QUO: // /
-		r = operand1 / operand2
-	case token.REM: // %
-		r = float64(int64(operand1) % int64(operand2))
-	case token.GTR: // >
-		if operand1 > operand2 {
-			r = 1
+	case token.ADD, token.SUB, token.MUL, token.QUO, token.REM:
+		if nodeX.Type.Kind() == types.Float || nodeY.Type.Kind() == types.Float {
+			operand1, err := nodeX.ToFloat()
+			if err != nil {
+				return nil, err
+			}
+			operand2, err := nodeY.ToFloat()
+			if err != nil {
+				return nil, err
+			}
+			return NewFloatNode(binop(expr.Op, operand1, operand2)), nil
+		} else if nodeX.Type.Kind() == types.Int && nodeY.Type.Kind() == types.Int {
+			operand1 := nodeX.Value.(int64)
+			operand2 := nodeY.Value.(int64)
+			return NewIntNode(binop(expr.Op, operand1, operand2)), nil
 		} else {
-			r = 0
+			return nil, errors.Errorf("unsupported types %v %v", nodeX.Type, nodeY.Type)
 		}
-	case token.GEQ: // >=
-		if operand1 >= operand2 {
-			r = 1
+	case token.GTR, token.GEQ, token.LSS, token.LEQ, token.EQL, token.NEQ:
+		if nodeX.Type.Kind() == types.Float || nodeY.Type.Kind() == types.Float {
+			operand1, err := nodeX.ToFloat()
+			if err != nil {
+				return nil, err
+			}
+			operand2, err := nodeY.ToFloat()
+			if err != nil {
+				return nil, err
+			}
+			return NewBoolNode(bincomp(expr.Op, operand1, operand2)), nil
+		} else if nodeX.Type.Kind() == types.Int && nodeY.Type.Kind() == types.Int {
+			operand1 := nodeX.Value.(int64)
+			operand2 := nodeY.Value.(int64)
+			return NewBoolNode(bincomp(expr.Op, operand1, operand2)), nil
 		} else {
-			r = 0
-		}
-	case token.LSS: // <
-		if operand1 < operand2 {
-			r = 1
-		} else {
-			r = 0
-		}
-	case token.LEQ: // <=
-		if operand1 <= operand2 {
-			r = 1
-		} else {
-			r = 0
-		}
-	case token.EQL: // ==
-		if operand1 == operand2 {
-			r = 1
-		} else {
-			r = 0
-		}
-	case token.NEQ: // !=
-		if operand1 != operand2 {
-			r = 1
-		} else {
-			r = 0
-		}
-	case token.LAND: // &&
-		if !isTruthyFloat(operand1) {
-			r = 0
-		} else if !isTruthyFloat(operand2) {
-			r = 0
-		} else {
-			r = 1
-		}
-	case token.LOR: // ||
-		if isTruthyFloat(operand1) {
-			r = 1
-		} else if isTruthyFloat(operand2) {
-			r = 1
-		} else {
-			r = 0
+			return nil, errors.Errorf("unsupported types %v %v", nodeX.Type, nodeY.Type)
 		}
 	default:
 		return nil, errors.New("Operation not supported")
 	}
-
-	return Number(r).ToNode(), nil
 }

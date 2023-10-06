@@ -1,18 +1,19 @@
 package tests
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/podocarp/goscript/machine"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestBasicArithmetic(t *testing.T) {
 	m := machine.NewMachine()
 	stmt := "3 + 4.2 * (5 - 2)"
 	val, err := m.ParseAndEval(stmt)
-	assert.Nil(t, err)
-	assert.InDelta(t, 15.6, val.Value.(machine.Number).ToFloat(), 1e-6)
+	require.Nil(t, err, err)
+	require.InDelta(t, 15.6, val.Value, 1e-6)
 
 	stmt = `
 	func (A, B) {
@@ -21,9 +22,35 @@ func TestBasicArithmetic(t *testing.T) {
 	} ( 1 , 2)
 	`
 	val, err = m.ParseAndEval(stmt)
-	assert.Nil(t, err, err)
-	assert.EqualValues(t, 13, val.Value)
+	require.Nil(t, err, err)
+	require.EqualValues(t, 13, val.Value)
+}
 
+func TestBasicBoolean(t *testing.T) {
+	m := machine.NewMachine()
+	stmt := "true"
+	val, err := m.ParseAndEval(stmt)
+	require.Nil(t, err, err)
+	require.EqualValues(t, true, val.Value)
+
+	stmt = "true && true"
+	val, err = m.ParseAndEval(stmt)
+	require.Nil(t, err, err)
+	require.EqualValues(t, true, val.Value)
+
+	for _, op1 := range []bool{true, false} {
+		for _, op2 := range []bool{true, false} {
+			stmt = fmt.Sprintf("%v || %v", op1, op2)
+			val, err = m.ParseAndEval(stmt)
+			require.Nil(t, err, err)
+			require.EqualValues(t, op1 || op2, val.Value)
+
+			stmt = fmt.Sprintf("%v && %v", op1, op2)
+			val, err = m.ParseAndEval(stmt)
+			require.Nil(t, err, err)
+			require.EqualValues(t, op1 && op2, val.Value)
+		}
+	}
 }
 
 func TestLoopsBasic(t *testing.T) {
@@ -39,8 +66,8 @@ func TestLoopsBasic(t *testing.T) {
 	} ( 1 , 10)
 	`
 	res, err := m.ParseAndEval(stmt)
-	assert.Nil(t, err, err)
-	assert.EqualValues(t, 46, res.Value)
+	require.Nil(t, err, err)
+	require.EqualValues(t, 46, res.Value)
 
 	stmt = `func(a, b) {
 		for i := 0; i < a; i++ {
@@ -50,8 +77,8 @@ func TestLoopsBasic(t *testing.T) {
 	}( 10, 1 )
 	`
 	res, err = m.ParseAndEval(stmt)
-	assert.Nil(t, err, err)
-	assert.EqualValues(t, 46.0, res.Value)
+	require.Nil(t, err, err)
+	require.EqualValues(t, 46.0, res.Value)
 }
 
 func TestConditionalsBasic(t *testing.T) {
@@ -68,8 +95,8 @@ func TestConditionalsBasic(t *testing.T) {
 	} (1 ,2 )
 	`
 	val, err := m.ParseAndEval(stmt)
-	assert.Nil(t, err, err)
-	assert.EqualValues(t, 2, val.Value)
+	require.Nil(t, err, err)
+	require.EqualValues(t, 2, val.Value)
 
 	stmt = `
 	func (A, B) {
@@ -80,6 +107,6 @@ func TestConditionalsBasic(t *testing.T) {
 	} ( 1 , 2)
 	`
 	val, err = m.ParseAndEval(stmt)
-	assert.Nil(t, err, err)
-	assert.EqualValues(t, 4, val.Value)
+	require.Nil(t, err, err)
+	require.EqualValues(t, 4, val.Value)
 }
