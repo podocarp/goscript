@@ -27,10 +27,26 @@ func (m *Machine) Evaluate(expr ast.Node) (*Node, error) {
 	}
 
 	switch n := expr.(type) {
+	case *ast.AssignStmt:
+		node, err = m.evalAssign(n)
 	case *ast.BasicLit, *ast.FuncLit:
 		node = m.evalLit(n)
+	case *ast.BinaryExpr:
+		node, err = m.evalBinary(n)
+	case *ast.BlockStmt:
+		node, err = m.evalBlock(n)
+	case *ast.CallExpr:
+		node, err = m.evalFunctionCall(n.Fun, n.Args)
 	case *ast.CompositeLit:
 		node, err = m.evalComposite(n)
+	case *ast.DeclStmt:
+		node, err = m.evalDecl(n)
+	case *ast.ExprStmt:
+		node, err = m.Evaluate(n.X)
+	case *ast.ForStmt:
+		node, err = m.evalFor(n)
+	case *ast.IfStmt:
+		node, err = m.evalIf(n)
 	case *ast.Ident:
 		node = m.Context.Get(n.Name)
 		if node == nil {
@@ -38,41 +54,12 @@ func (m *Machine) Evaluate(expr ast.Node) (*Node, error) {
 		}
 	case *ast.IndexExpr:
 		node, err = m.evalIndex(n)
-	case *ast.DeclStmt:
-		node, err = m.evalDecl(n)
-	case *ast.AssignStmt:
-		node, err = m.evalAssign(n)
 	case *ast.ParenExpr:
 		node, err = m.Evaluate(n.X)
-	case *ast.ExprStmt:
-		node, err = m.Evaluate(n.X)
-	case *ast.BinaryExpr:
-		node, err = m.evalBinary(n)
 	case *ast.UnaryExpr:
 		node, err = m.evalUnary(n)
 	case *ast.IncDecStmt:
-		var tok token.Token
-		if n.Tok == token.INC {
-			tok = token.ADD_ASSIGN
-		} else if n.Tok == token.DEC {
-			tok = token.SUB_ASSIGN
-		} else {
-			err = errors.New("impossible inc dec stmt!")
-			break
-		}
-		node, err = m.evalAssign(&ast.AssignStmt{
-			Lhs: []ast.Expr{n.X},
-			Rhs: []ast.Expr{Number(1).ToLiteral()},
-			Tok: tok,
-		})
-	case *ast.CallExpr:
-		node, err = m.evalFunctionCall(n.Fun, n.Args)
-	case *ast.BlockStmt:
-		node, err = m.evalBlock(n)
-	case *ast.IfStmt:
-		node, err = m.evalIf(n)
-	case *ast.ForStmt:
-		node, err = m.evalFor(n)
+		node, err = m.evalIncDec(n)
 	case *ast.ReturnStmt:
 		node, err = m.Evaluate(n.Results[0])
 		node.IsReturnValue = true
@@ -92,6 +79,33 @@ func (m *Machine) Evaluate(expr ast.Node) (*Node, error) {
 
 	m.maxDepth++
 	return node, err
+}
+
+func (m *Machine) evalLit(lit ast.Node) *Node {
+	switch n := lit.(type) {
+	case *ast.BasicLit:
+		switch n.Kind {
+		case token.FLOAT, token.INT:
+			return &Node{
+				Type:  types.FloatType,
+				Value: LiteralToNumber(n),
+			}
+		case token.CHAR, token.STRING:
+			val, _ := strconv.Unquote(n.Value)
+			return &Node{
+				Type:  types.StringType,
+				Value: val,
+			}
+		}
+	case *ast.FuncLit:
+		return &Node{
+			Type:    types.FuncType,
+			Value:   lit,
+			Context: m.Context,
+		}
+	}
+
+	return nil
 }
 
 func (m *Machine) evalBlock(stmt *ast.BlockStmt) (*Node, error) {
@@ -366,7 +380,7 @@ func (m *Machine) evalFor(n *ast.ForStmt) (*Node, error) {
 	return res, nil
 }
 
-func FlattenFieldList(fieldList []*ast.Field) ([]*ast.Field, error) {
+func flattenArgList(fieldList []*ast.Field) ([]*ast.Field, error) {
 	res := make([]*ast.Field, 0)
 	for _, field := range fieldList {
 		if field.Names == nil && field.Type == nil {
@@ -405,7 +419,7 @@ func (m *Machine) applyFunction(fun *Node, args []*Node) (*Node, error) {
 	n := fun.Value.(*ast.FuncLit)
 	// populate arguments
 	params := n.Type.Params
-	fieldList, err := FlattenFieldList(params.List)
+	fieldList, err := flattenArgList(params.List)
 
 	if err != nil {
 		return nil, err
@@ -478,6 +492,23 @@ func (m *Machine) evalUnary(expr *ast.UnaryExpr) (*Node, error) {
 	}
 
 	return Number(r).ToNode(), nil
+}
+
+func (m *Machine) evalIncDec(expr *ast.IncDecStmt) (*Node, error) {
+	// translate into arithmetic
+	var tok token.Token
+	if expr.Tok == token.INC {
+		tok = token.ADD_ASSIGN
+	} else if expr.Tok == token.DEC {
+		tok = token.SUB_ASSIGN
+	} else {
+		return nil, errors.New("impossible inc dec stmt!")
+	}
+	return m.Evaluate(&ast.AssignStmt{
+		Lhs: []ast.Expr{expr.X},
+		Rhs: []ast.Expr{Number(1).ToLiteral()},
+		Tok: tok,
+	})
 }
 
 func (m *Machine) evalBinary(expr *ast.BinaryExpr) (*Node, error) {
@@ -569,31 +600,4 @@ func (m *Machine) evalBinary(expr *ast.BinaryExpr) (*Node, error) {
 	}
 
 	return Number(r).ToNode(), nil
-}
-
-func (m *Machine) evalLit(lit ast.Node) *Node {
-	switch n := lit.(type) {
-	case *ast.BasicLit:
-		switch n.Kind {
-		case token.FLOAT, token.INT:
-			return &Node{
-				Type:  types.FloatType,
-				Value: LiteralToNumber(n),
-			}
-		case token.CHAR, token.STRING:
-			val, _ := strconv.Unquote(n.Value)
-			return &Node{
-				Type:  types.StringType,
-				Value: val,
-			}
-		}
-	case *ast.FuncLit:
-		return &Node{
-			Type:    types.FuncType,
-			Value:   lit,
-			Context: m.Context,
-		}
-	}
-
-	return nil
 }
