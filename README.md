@@ -109,6 +109,18 @@ especially with things like the stdlib.
 TODO: test the speed for injecting an array into the context and operating on
 it.
 
+## Builtins
+
+Only a few builtin functions are available.
+
+Those that work similar to golang:
+- append
+- len
+
+Those with differences:
+- make – currently does not accept any capacity arguments. This means you can
+  only write `make([]float64)`.
+
 
 ## Missing features
 
@@ -116,20 +128,17 @@ This implementation of golang is incorrect in certain small areas but major
 functionality should be correct as enforced in the tests.
 
 Missing features from actual golang:
-- No types, they are actively ignored for now
+- Only very basic runtime type checking
+- uint support is basically non existent, just use an int
 - No multi return and multi assign
-- All numbers and booleans are actually floats
 - No channels and goroutines
 - No packages and imports
 - You need to wrap scripts in a function if you have more than one line of code
-  because the parser only works on expressions.
-- No stdlib. No `make` or `fmt.Println` yet.
-
-Builtin functions implemented:
-- len
-- append
+  because of the parser.
+- Builtins are not complete and sometimes differ from the those in go.
 
 TODO:
 
 - Maps
-- Basic runtime typing
+- Types
+- Proper slices with sizes

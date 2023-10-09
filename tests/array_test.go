@@ -31,7 +31,7 @@ func TestArrayDefine(t *testing.T) {
 }
 
 func TestArrayType(t *testing.T) {
-	m := machine.NewMachine(machine.MachineOptSetDebug)
+	m := machine.NewMachine()
 	var stmt string
 	var err error
 	var res *machine.Node
@@ -94,7 +94,7 @@ func TestArrayType(t *testing.T) {
 
 // TestArrayMake tests that make() works as expected
 func TestArrayMake(t *testing.T) {
-	m := machine.NewMachine(machine.MachineOptSetDebug)
+	m := machine.NewMachine()
 
 	stmt := `func() {
 		c := make([]float64)

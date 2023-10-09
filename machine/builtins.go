@@ -18,7 +18,7 @@ type builtin struct {
 }
 
 func (m *Machine) AddBuiltinsToContext() {
-	var builtins = map[string]builtin{
+	var builtins = map[string]*builtin{
 		"append": {
 			fun:      Append,
 			evalArgs: true,
@@ -36,7 +36,7 @@ func (m *Machine) AddBuiltinsToContext() {
 	for name, val := range builtins {
 		m.Context.Set(name, &Node{
 			Type:  types.BuiltinType,
-			Value: &val,
+			Value: val,
 		})
 	}
 }

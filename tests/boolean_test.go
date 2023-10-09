@@ -50,7 +50,7 @@ func TestBooleanShortCircuit(t *testing.T) {
 			return true
 		}
 
-		if  pred() {
+		if pred() {
 			return b
 		}
 

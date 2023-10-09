@@ -59,8 +59,7 @@ func (m *Machine) Evaluate(expr ast.Node) (*Node, error) {
 	case *ast.IncDecStmt:
 		node, err = m.evalIncDec(n)
 	case *ast.ReturnStmt:
-		node, err = m.Evaluate(n.Results[0])
-		node.IsReturnValue = true
+		node, err = m.evalReturn(n)
 	default:
 		err = errors.Errorf("unknown type %v", reflect.TypeOf(expr))
 	}
@@ -138,78 +137,84 @@ func (m *Machine) evalBlock(stmt *ast.BlockStmt) (*Node, error) {
 	return res, nil
 }
 
-func (m *Machine) evalAssign(stmt *ast.AssignStmt) (*Node, error) {
-	name := stmt.Lhs[0].(*ast.Ident).Name
-	var node *Node
-	var err error
-	switch stmt.Tok {
-	case token.ADD_ASSIGN: // +=
-		node, err = m.evalBinary(&ast.BinaryExpr{
-			X:  stmt.Lhs[0],
-			Op: token.ADD,
-			Y:  stmt.Rhs[0],
-		})
-		if err != nil {
-			break
-		}
-		err = m.Context.Update(name, node)
-	case token.SUB_ASSIGN: // -=
-		node, err = m.evalBinary(&ast.BinaryExpr{
-			X:  stmt.Lhs[0],
-			Op: token.SUB,
-			Y:  stmt.Rhs[0],
-		})
-		if err != nil {
-			break
-		}
-		err = m.Context.Update(name, node)
-	case token.MUL_ASSIGN: // *=
-		node, err = m.evalBinary(&ast.BinaryExpr{
-			X:  stmt.Lhs[0],
-			Op: token.MUL,
-			Y:  stmt.Rhs[0],
-		})
-		if err != nil {
-			break
-		}
-		err = m.Context.Update(name, node)
-	case token.QUO_ASSIGN: // /=
-		node, err = m.evalBinary(&ast.BinaryExpr{
-			X:  stmt.Lhs[0],
-			Op: token.QUO,
-			Y:  stmt.Rhs[0],
-		})
-		if err != nil {
-			break
-		}
-		err = m.Context.Update(name, node)
-	case token.REM_ASSIGN: // %=
-		node, err = m.evalBinary(&ast.BinaryExpr{
-			X:  stmt.Lhs[0],
-			Op: token.REM,
-			Y:  stmt.Rhs[0],
-		})
-		if err != nil {
-			break
-		}
-		err = m.Context.Update(name, node)
-	case token.ASSIGN: // =
-		node, err = m.Evaluate(stmt.Rhs[0])
-		if err != nil {
-			return nil, err
-		}
-		err = m.Context.Update(name, node)
-	case token.DEFINE: // :=
-		node, err = m.Evaluate(stmt.Rhs[0])
-		if err != nil {
-			return nil, err
-		}
-		err = m.Context.Set(name, node)
+func downgradeAssignArithmeticToken(tok token.Token) token.Token {
+	switch tok {
+	case token.ADD_ASSIGN:
+		return token.ADD
+	case token.SUB_ASSIGN:
+		return token.SUB
+	case token.MUL_ASSIGN:
+		return token.MUL
+	case token.QUO_ASSIGN:
+		return token.QUO
+	case token.REM_ASSIGN:
+		return token.REM
 	default:
-		err = errors.Errorf("unknown assign token %s", stmt.Tok.String())
+		return -1
+	}
+}
+
+func (m *Machine) evalAssign(stmt *ast.AssignStmt) (*Node, error) {
+	switch stmt.Tok {
+	case token.ADD_ASSIGN, token.SUB_ASSIGN, token.MUL_ASSIGN,
+		token.QUO_ASSIGN, token.REM_ASSIGN:
+		if len(stmt.Lhs) != 1 || len(stmt.Rhs) != 1 {
+			return nil, errors.Errorf("syntax error at %v", stmt.Tok)
+		}
+
+		node, err := m.evalBinary(&ast.BinaryExpr{
+			X:  stmt.Lhs[0],
+			Op: downgradeAssignArithmeticToken(stmt.Tok),
+			Y:  stmt.Rhs[0],
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		name := stmt.Lhs[0].(*ast.Ident).Name
+		err = m.Context.Update(name, node)
+		if err != nil {
+			return nil, err
+		}
+
+	case token.ASSIGN, token.DEFINE:
+		rhs := make([]*Node, 0, 1)
+		for _, expr := range stmt.Rhs {
+			node, err := m.Evaluate(expr)
+			if err != nil {
+				return nil, err
+			}
+
+			if node.Elems != nil {
+				rhs = append(rhs, node.Elems...)
+			} else {
+				rhs = append(rhs, node)
+			}
+		}
+
+		if len(stmt.Lhs) != len(rhs) {
+			return nil, errors.Errorf(
+				"assignment mismatch: %d variables on lhs but %d values on rhs",
+				len(stmt.Lhs),
+				len(rhs),
+			)
+		}
+
+		for i := range stmt.Lhs {
+			name := stmt.Lhs[i].(*ast.Ident).Name
+			var err error
+			if stmt.Tok == token.ASSIGN {
+				err = m.Context.Update(name, rhs[i])
+			} else {
+				err = m.Context.Set(name, rhs[i])
+			}
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
 
-	return node, err
+	return nil, nil
 }
 
 func (m *Machine) evalDecl(n *ast.DeclStmt) (*Node, error) {
@@ -333,15 +338,22 @@ func (m *Machine) evalIf(n *ast.IfStmt) (*Node, error) {
 	oldContext := m.Context
 	// context for the stuff in (...)
 	ifContext := oldContext.NewChildContext("if stmt")
-	// context for the stuff in the if block
-	blockContext := ifContext.NewChildContext("if block")
-
 	m.Context = ifContext
-	cond, err := m.Evaluate(n.Cond)
-	if err != nil {
-		return nil, errors.Errorf("cannot eval if cond %w", err)
+
+	if n.Init != nil {
+		_, err := m.Evaluate(n.Init)
+		if err != nil {
+			return nil, err
+		}
 	}
 
+	cond, err := m.Evaluate(n.Cond)
+	if err != nil {
+		return nil, err
+	}
+
+	// context for the stuff in the if block
+	blockContext := ifContext.NewChildContext("if block")
 	m.Context = blockContext
 	var res *Node
 	if cond.Type.Kind() != types.Bool {
@@ -690,5 +702,28 @@ func (m *Machine) evalBinary(expr *ast.BinaryExpr) (*Node, error) {
 		}
 	default:
 		return nil, errors.New("Operation not supported")
+	}
+}
+
+func (m *Machine) evalReturn(expr *ast.ReturnStmt) (*Node, error) {
+	switch len(expr.Results) {
+	case 0:
+		return &Node{}, nil
+	case 1:
+		node, err := m.Evaluate(expr.Results[0])
+		node.IsReturnValue = true
+		return node, err
+	default:
+		node := &Node{}
+		node.IsReturnValue = true
+		node.Elems = make([]*Node, len(expr.Results))
+		for i := range expr.Results {
+			resultNode, err := m.Evaluate(expr.Results[i])
+			if err != nil {
+				return nil, err
+			}
+			node.Elems[i] = resultNode
+		}
+		return node, nil
 	}
 }

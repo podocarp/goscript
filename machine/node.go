@@ -15,67 +15,20 @@ type Node struct {
 	Value   any
 	Context *context
 
+	// For multi return/assign
+	Elems []*Node
+
 	IsReturnValue bool
-}
-
-// ValueToNode takes a value and returns a machien Node representing that
-// value.
-func ValueToNode(val any) (*Node, error) {
-	return valueToNodeHelper(reflect.ValueOf(val))
-}
-
-func valueToNodeHelper(val reflect.Value) (*Node, error) {
-	switch val.Kind() {
-	case reflect.String:
-		return &Node{
-			Type:  types.StringType,
-			Value: val.String(),
-		}, nil
-	case reflect.Float32, reflect.Float64:
-		return &Node{
-			Type:  types.FloatType,
-			Value: val.Float(),
-		}, nil
-	case reflect.Uint, reflect.Uint8,
-		reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		return &Node{
-			Type:  types.UintType,
-			Value: val.Uint(),
-		}, nil
-	case reflect.Int, reflect.Int8,
-		reflect.Int16, reflect.Int32, reflect.Int64:
-		return &Node{
-			Type:  types.IntType,
-			Value: val.Int(),
-		}, nil
-	case reflect.Array, reflect.Slice:
-		res := make([]*Node, val.Len())
-		val.Type().Elem()
-		for i := 0; i < val.Len(); i++ {
-			elem := val.Index(i)
-			node, err := valueToNodeHelper(elem)
-			if err != nil {
-				return nil, err
-			}
-			res[i] = node
-		}
-		arrType, err := types.ReflectTypeToType(val.Type())
-		if err != nil {
-			return nil, err
-		}
-		return &Node{
-			Type:  arrType,
-			Value: res,
-		}, nil
-	default:
-		return nil, errors.Errorf("unsupported type %s", val.Type())
-	}
 }
 
 func arrToString(arr []*Node) string {
 	var arrContents strings.Builder
 	arrContents.WriteString("[ ")
 	for _, elem := range arr {
+		if elem == nil {
+			arrContents.WriteString("<NIL>")
+		}
+
 		if elem.Type.Kind() == types.Array {
 			arrContents.WriteString(arrToString(elem.Value.([]*Node)))
 		} else {
@@ -90,7 +43,10 @@ func arrToString(arr []*Node) string {
 
 func (n *Node) String() string {
 	var val string
-	if n == nil {
+	if n.Value == nil {
+		if n.Elems != nil {
+			return fmt.Sprintf("t(%s)", arrToString(n.Elems))
+		}
 		return "nil"
 	}
 	switch n.Type.Kind() {
@@ -171,5 +127,59 @@ func NewUintNode(val uint64) *Node {
 	return &Node{
 		Type:  types.UintType,
 		Value: val,
+	}
+}
+
+// ValueToNode takes a value and returns a machien Node representing that
+// value.
+func ValueToNode(val any) (*Node, error) {
+	return valueToNodeHelper(reflect.ValueOf(val))
+}
+
+func valueToNodeHelper(val reflect.Value) (*Node, error) {
+	switch val.Kind() {
+	case reflect.String:
+		return &Node{
+			Type:  types.StringType,
+			Value: val.String(),
+		}, nil
+	case reflect.Float32, reflect.Float64:
+		return &Node{
+			Type:  types.FloatType,
+			Value: val.Float(),
+		}, nil
+	case reflect.Uint, reflect.Uint8,
+		reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return &Node{
+			Type:  types.UintType,
+			Value: val.Uint(),
+		}, nil
+	case reflect.Int, reflect.Int8,
+		reflect.Int16, reflect.Int32, reflect.Int64:
+		return &Node{
+			Type:  types.IntType,
+			Value: val.Int(),
+		}, nil
+	case reflect.Array, reflect.Slice:
+		res := make([]*Node, val.Len())
+		val.Type().Elem()
+		for i := 0; i < val.Len(); i++ {
+			elem := val.Index(i)
+			node, err := valueToNodeHelper(elem)
+			if err != nil {
+				return nil, err
+			}
+			res[i] = node
+		}
+		arrType, err := types.ReflectTypeToType(val.Type())
+		if err != nil {
+			return nil, err
+		}
+		return &Node{
+			Type:  arrType,
+			Value: res,
+		}, nil
+	default:
+		return nil, errors.Errorf("unsupported type %s", val.Type())
 	}
 }
