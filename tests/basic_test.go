@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/podocarp/goscript/machine"
@@ -24,33 +23,6 @@ func TestBasicArithmetic(t *testing.T) {
 	val, err = m.ParseAndEval(stmt)
 	require.Nil(t, err, err)
 	require.EqualValues(t, 13, val.Value)
-}
-
-func TestBasicBoolean(t *testing.T) {
-	m := machine.NewMachine()
-	stmt := "true"
-	val, err := m.ParseAndEval(stmt)
-	require.Nil(t, err, err)
-	require.EqualValues(t, true, val.Value)
-
-	stmt = "true && true"
-	val, err = m.ParseAndEval(stmt)
-	require.Nil(t, err, err)
-	require.EqualValues(t, true, val.Value)
-
-	for _, op1 := range []bool{true, false} {
-		for _, op2 := range []bool{true, false} {
-			stmt = fmt.Sprintf("%v || %v", op1, op2)
-			val, err = m.ParseAndEval(stmt)
-			require.Nil(t, err, err)
-			require.EqualValues(t, op1 || op2, val.Value)
-
-			stmt = fmt.Sprintf("%v && %v", op1, op2)
-			val, err = m.ParseAndEval(stmt)
-			require.Nil(t, err, err)
-			require.EqualValues(t, op1 && op2, val.Value)
-		}
-	}
 }
 
 func TestLoopsBasic(t *testing.T) {

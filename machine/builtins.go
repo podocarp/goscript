@@ -1,38 +1,66 @@
 package machine
 
 import (
+	"go/ast"
+	"reflect"
+
 	"github.com/go-errors/errors"
 	"github.com/podocarp/goscript/types"
 )
 
-type builtin func(args []*Node) (*Node, error)
+type builtin struct {
+	fun func(m *Machine, args any) (*Node, error)
 
-// A set of all valid builtins' names
-var builtins = map[string]builtin{
-	"append": Append,
-	"len":    Len,
+	// should the arguments be `Evaluate`d before feeding into `fun`. If
+	// true, the array `fun` receives will be of type []*Node. If false,
+	// the array `fun` receives will be of type []ast.Expr.
+	evalArgs bool
 }
 
 func (m *Machine) AddBuiltinsToContext() {
-	for name := range builtins {
+	var builtins = map[string]builtin{
+		"append": {
+			fun:      Append,
+			evalArgs: true,
+		},
+		"len": {
+			fun:      Len,
+			evalArgs: true,
+		},
+		"make": {
+			fun:      Make,
+			evalArgs: false,
+		},
+	}
+
+	for name, val := range builtins {
 		m.Context.Set(name, &Node{
 			Type:  types.BuiltinType,
-			Value: name,
+			Value: &val,
 		})
 	}
 }
 
-func (m *Machine) CallBuiltin(fun *Node, args []*Node) (*Node, error) {
-	name := fun.Value.(string)
-	if builtin, ok := builtins[name]; ok {
-		return builtin(args)
+func (m *Machine) CallBuiltin(fun *Node, args []ast.Expr) (*Node, error) {
+	builtin := fun.Value.(*builtin)
+	if builtin.evalArgs {
+		nodeArgs := make([]*Node, len(args))
+		for i, arg := range args {
+			n, err := m.Evaluate(arg)
+			if err != nil {
+				return nil, errors.WrapPrefix(err, "error evaluating function arguments", 10)
+			}
+			nodeArgs[i] = n
+		}
+		return builtin.fun(m, nodeArgs)
 	} else {
-		return nil, errors.Errorf("non-existent builtin %s", name)
+		return builtin.fun(m, args)
 	}
 }
 
 // append(s []T, vs ...T) []T
-func Append(args []*Node) (*Node, error) {
+func Append(_ *Machine, a any) (*Node, error) {
+	args := a.([]*Node)
 	arr := args[0]
 	vals := args[1:]
 	newValue := arr.Value.([]*Node)
@@ -41,7 +69,8 @@ func Append(args []*Node) (*Node, error) {
 	return arr, nil
 }
 
-func Len(args []*Node) (*Node, error) {
+func Len(_ *Machine, a any) (*Node, error) {
+	args := a.([]*Node)
 	arg := args[0]
 	var res int
 	switch arg.Type.Kind() {
@@ -54,4 +83,22 @@ func Len(args []*Node) (*Node, error) {
 	}
 
 	return NewIntNode(int64(res)), nil
+}
+
+// make(t Type, size ...IntegerType) Type
+func Make(m *Machine, a any) (*Node, error) {
+	args := a.([]ast.Expr)
+	if len(args) > 1 {
+		return nil, errors.Errorf(
+			"`make` currently does not support capacity arguments",
+		)
+	}
+
+	typeInfo := args[0]
+	switch n := typeInfo.(type) {
+	case *ast.ArrayType:
+		return m.evalArray(n.Elt, []ast.Expr{})
+	default:
+		return nil, errors.Errorf("unsupported type %v for make", reflect.TypeOf(typeInfo))
+	}
 }

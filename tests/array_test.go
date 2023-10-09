@@ -92,20 +92,22 @@ func TestArrayType(t *testing.T) {
 	require.NotNil(t, err, err)
 }
 
-// func TestArrayMake(t *testing.T) {
-// 	m := machine.NewMachine(machine.MachineOptSetDebug)
-//
-// 	stmt := `func() {
-// 		c := make([]float64, 1)
-// 		return c
-// 	}()
-// 	`
-// 	res, err := m.ParseAndEval(stmt)
-// 	require.Nil(t, err, err)
-// 	require.EqualValues(t, 1, res.Value)
-//
-// }
+// TestArrayMake tests that make() works as expected
+func TestArrayMake(t *testing.T) {
+	m := machine.NewMachine(machine.MachineOptSetDebug)
 
+	stmt := `func() {
+		c := make([]float64)
+		return c
+	}()
+	`
+	res, err := m.ParseAndEval(stmt)
+	require.Nil(t, err, err)
+	require.EqualValues(t, []*machine.Node{}, res.Value)
+
+}
+
+// TestArrayAppend tests that append() works as expected
 func TestArrayAppend(t *testing.T) {
 	m := machine.NewMachine()
 
@@ -121,6 +123,7 @@ func TestArrayAppend(t *testing.T) {
 
 }
 
+// TestArrayLen tests that len() works as expected
 func TestArrayLen(t *testing.T) {
 	m := machine.NewMachine()
 

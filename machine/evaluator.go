@@ -446,10 +446,6 @@ func (m *Machine) applyFunction(fun *Node, args []*Node) (*Node, error) {
 	m.Context = m.Context.NewChildContext("func block")
 	var err error
 
-	if fun.Type.Kind() == types.Builtin {
-		return m.CallBuiltin(fun, args)
-	}
-
 	n := fun.Value.(*ast.FuncLit)
 	// populate arguments
 	params := n.Type.Params
@@ -483,7 +479,15 @@ func (m *Machine) applyFunction(fun *Node, args []*Node) (*Node, error) {
 }
 
 func (m *Machine) evalFunctionCall(fun ast.Expr, args []ast.Expr) (*Node, error) {
-	var err error
+	funNode, err := m.Evaluate(fun)
+	if err != nil {
+		return nil, err
+	}
+
+	if funNode.Type.Kind() == types.Builtin {
+		return m.CallBuiltin(funNode, args)
+	}
+
 	nodeArgs := make([]*Node, len(args))
 	for i, arg := range args {
 		n, err := m.Evaluate(arg)
@@ -493,10 +497,6 @@ func (m *Machine) evalFunctionCall(fun ast.Expr, args []ast.Expr) (*Node, error)
 		nodeArgs[i] = n
 	}
 
-	funNode, err := m.Evaluate(fun)
-	if err != nil {
-		return nil, err
-	}
 	return m.applyFunction(funNode, nodeArgs)
 }
 
