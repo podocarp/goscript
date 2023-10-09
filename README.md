@@ -16,8 +16,6 @@ Some benefits:
 - You can parse a function, save it, and execute it with different arguments later.
 - It has to be fast and lightweight, no need for fancy features.
 
-
-
 ## Examples
 
 Think of this as a JS but you are writing it in golang.
@@ -83,31 +81,40 @@ an array.
 
 TODO: benchmark this
 
-### Golang interpreters
+### yaegi
 
-There are many golang interpreters. One of the more developed ones are [yaegi](https://github.com/traefik/yaegi).
-It is still slower. Following is a test of recursively finding the 30-th
-Fibonnaci number (exponential runtime):
+There are many golang interpreters. One of the more developed ones are
+[yaegi](https://github.com/traefik/yaegi).
+It is slower than `goscript`. Following is a test of recursively finding the
+10-th Fibonnaci number using a naive recursive implementation:
 ```
-goos: linux
-goarch: amd64
-pkg: github.com/podocarp/goscript/benchmarks
-cpu: AMD Ryzen 7 5800X 8-Core Processor
-BenchmarkFib-16                1        3571864657 ns/op
-BenchmarkYaegi-16              1        4627993028 ns/op
-PASS
-ok      github.com/podocarp/goscript/benchmarks 8.208s
+goos: darwin
+goarch: arm64
+BenchmarkFib-10            10000            111173 ns/op
+BenchmarkYaegi-10           5929            201504 ns/op
 ```
-Only one iteration is run, which eliminates any speed difference
-caused by type checking and initialization (`goscript` has neither
-but yaegi needs both).
-
-I am not sure how yaegi works, but it has many bells and whistles that I don't
-need. It is a good alternative if you want to actually run full go within go,
-especially with things like the stdlib.
+`yaegi` is a good alternative if you want to actually run a fully featured copy
+of golang that tries to adheres to the specs. If all you need are simple loops
+and conditionals, then `goscript` is much faster.
 
 TODO: test the speed for injecting an array into the context and operating on
 it.
+
+### govaluate
+
+[govaluate](https://github.com/Knetic/govaluate) is a good solution if all you
+need are simple expressions. It is much faster than `goscript` for simple
+arithmetic.
+
+```
+goos: darwin
+goarch: arm64
+BenchmarkArithmetic-10                   1848987               645.4 ns/op
+BenchmarkGovaluateArithmetic-10           994921              1200 ns/op
+```
+
+However, it cannot define functions at runtime. That may be a problem for some
+cases if you need more advanced control structures during computation.
 
 ## Builtins
 

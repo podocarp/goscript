@@ -19,7 +19,7 @@ func BenchmarkFib(b *testing.B) {
 			return Fib(n-1) + Fib(n-2)
 		}
 		return Fib(n)
-	}(30)
+	}(10)
 	`
 
 	for i := 0; i < b.N; i++ {
@@ -44,7 +44,7 @@ func BenchmarkYaegi(b *testing.B) {
 			return Fib(n-1) + Fib(n-2)
 		}
 		return Fib(n)
-	}(30)
+	}(10)
 	`
 
 	for i := 0; i < b.N; i++ {
