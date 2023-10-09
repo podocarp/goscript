@@ -61,13 +61,13 @@ func main() {
 
 	resLit := res.Value.(*ast.FuncLit)
 	callRes, err := m.CallFunction(res, []ast.Expr{
-		machine.Number(1).ToLiteral(),
+	    machine.ValueToNode(1)
 	})
 }
 ```
 
-Right now supplying and obtaining values are not too convenient, I'm working on
-some wrappers for this.
+To convert a value into a machine Node, you would use `machine.ValueToNode()`. To
+do the reverse, you would use `node.NodeToValue()`.
 
 ## Comparisons with other solutions
 
@@ -136,8 +136,8 @@ functionality should be correct as enforced in the tests.
 
 Missing features from actual golang:
 - Only very basic runtime type checking
-- uint support is basically non existent, just use an int
-- No multi return and multi assign
+- uint support is poor, prefer int
+- No pointers
 - No channels and goroutines
 - No packages and imports
 - You need to wrap scripts in a function if you have more than one line of code
