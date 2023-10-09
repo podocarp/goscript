@@ -54,6 +54,8 @@ func (m *Machine) Evaluate(expr ast.Node) (*Node, error) {
 		node, err = m.evalIndex(n)
 	case *ast.ParenExpr:
 		node, err = m.Evaluate(n.X)
+	case *ast.RangeStmt:
+		node, err = m.evalRange(n)
 	case *ast.UnaryExpr:
 		node, err = m.evalUnary(n)
 	case *ast.IncDecStmt:
@@ -368,6 +370,54 @@ func (m *Machine) evalIf(n *ast.IfStmt) (*Node, error) {
 
 	if err != nil {
 		return nil, errors.WrapPrefix(err, "cannot eval if", 10)
+	}
+
+	m.Context = oldContext
+	return res, nil
+}
+
+func (m *Machine) evalRange(expr *ast.RangeStmt) (*Node, error) {
+	// save context before for block
+	oldContext := m.Context
+	// context for the contents in the (...).
+	forContext := oldContext.NewChildContext("for stmt")
+	// context for the for block
+	blockContext := forContext.NewChildContext("for block")
+
+	m.Context = forContext
+	rangeTarget, err := m.Evaluate(expr.X)
+	if err != nil {
+		return nil, err
+	}
+
+	var res *Node
+	switch rangeTarget.Type.Kind() {
+	case types.Array:
+		arr := rangeTarget.Value.([]*Node)
+		for i, elem := range arr {
+			m.Context = forContext
+			if expr.Key != nil {
+				val, _ := ValueToNode(i)
+				name := expr.Key.(*ast.Ident).Name
+				m.Context.Set(name, val)
+			}
+			if expr.Value != nil {
+				name := expr.Value.(*ast.Ident).Name
+				m.Context.Set(name, elem)
+			}
+
+			m.Context = blockContext
+			res, err = m.Evaluate(expr.Body)
+			if err != nil {
+				return nil, errors.WrapPrefix(err, "cannot eval range body", 10)
+			}
+
+			if res != nil && res.IsReturnValue {
+				break
+			}
+		}
+	default:
+		return nil, errors.Errorf("range not implemented for type %v", rangeTarget.Type)
 	}
 
 	m.Context = oldContext

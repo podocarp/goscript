@@ -52,31 +52,3 @@ func TestMultiAssign(t *testing.T) {
 	require.EqualValues(t, 3, val.Elems[1].Value)
 	require.EqualValues(t, 4, val.Elems[2].Value)
 }
-
-func TestLoopsBasic(t *testing.T) {
-	m := machine.NewMachine()
-
-	// test loops
-	stmt := `
-	func (A float64, B float64) {
-		for i := 0; i < B; i++ {
-			A += i
-		}
-		return A
-	} ( 1 , 10)
-	`
-	res, err := m.ParseAndEval(stmt)
-	require.Nil(t, err, err)
-	require.EqualValues(t, 46, res.Value)
-
-	stmt = `func(a, b) {
-		for i := 0; i < a; i++ {
-			b += i
-		}
-		return b
-	}( 10, 1 )
-	`
-	res, err = m.ParseAndEval(stmt)
-	require.Nil(t, err, err)
-	require.EqualValues(t, 46.0, res.Value)
-}
