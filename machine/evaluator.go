@@ -36,6 +36,8 @@ func (m *Machine) Evaluate(expr ast.Node) (*Node, error) {
 		node, err = m.evalBinary(n)
 	case *ast.BlockStmt:
 		node, err = m.evalBlock(n)
+	case *ast.BranchStmt:
+		node, err = m.evalBranch(n)
 	case *ast.CallExpr:
 		node, err = m.evalFunctionCall(n.Fun, n.Args)
 	case *ast.CompositeLit:
@@ -131,8 +133,16 @@ func (m *Machine) evalBlock(stmt *ast.BlockStmt) (*Node, error) {
 		if err != nil {
 			return nil, err
 		}
-		if res != nil && res.IsReturnValue {
-			break
+		if res != nil {
+			if res.IsReturnValue {
+				break
+			}
+			if res.IsContinue {
+				break
+			}
+			if res.IsBreak{
+				break
+			}
 		}
 	}
 
@@ -279,11 +289,11 @@ func stringToType(str string) (types.Type, error) {
 	}
 }
 
-func (m *Machine) evalArray(elementType ast.Node, elems []ast.Expr) (*Node, error) {
+func (m *Machine) evalArray(elementAstType ast.Node, elems []ast.Expr) (*Node, error) {
 	res := make([]*Node, 0, len(elems))
 	var elemType types.Type
 	var err error
-	switch n := elementType.(type) {
+	switch n := elementAstType.(type) {
 	case *ast.Ident:
 		elemType, err = stringToType(n.Name)
 		if err != nil {
@@ -315,15 +325,27 @@ func (m *Machine) evalArray(elementType ast.Node, elems []ast.Expr) (*Node, erro
 		}
 	case *ast.ArrayType:
 		// Array of arrays. we have to eval each elem again
+
+		// get type first
+		emptyNode, err := m.evalArray(n.Elt, []ast.Expr{})
+		if err != nil {
+			return nil, err
+		}
+		elemType = emptyNode.Type
+
 		for _, elem := range elems {
 			elemLit := elem.(*ast.CompositeLit)
 			elemNode, err := m.evalArray(n.Elt, elemLit.Elts)
 			if err != nil {
 				return nil, err
 			}
-			elemType = elemNode.Type
-			if err != nil {
-				return nil, err
+			if !elemNode.Type.Equal(elemType) {
+				return nil, errors.Errorf(
+					"element %v type of %v incompatible with array type %v",
+					elemNode,
+					elemNode.Type,
+					elemType,
+				)
 			}
 			res = append(res, elemNode)
 		}
@@ -424,6 +446,15 @@ func (m *Machine) evalRange(expr *ast.RangeStmt) (*Node, error) {
 	return res, nil
 }
 
+func (m *Machine) evalBranch(n *ast.BranchStmt) (*Node, error) {
+	switch n.Tok {
+	case token.CONTINUE:
+		return &Node{IsContinue: true}, nil
+	default:
+		return nil, errors.Errorf("unimplemented branch token %v", n.Tok)
+	}
+}
+
 func (m *Machine) evalFor(n *ast.ForStmt) (*Node, error) {
 	// save context before for block
 	oldContext := m.Context
@@ -457,14 +488,18 @@ func (m *Machine) evalFor(n *ast.ForStmt) (*Node, error) {
 			return nil, errors.WrapPrefix(err, "cannot eval for body", 10)
 		}
 
-		if res != nil && res.IsReturnValue {
-			break
+		if res != nil {
+			if res.IsReturnValue {
+				break
+			}
 		}
 
 		m.Context = forContext
-		_, err = m.Evaluate(n.Post)
-		if err != nil {
-			return nil, errors.WrapPrefix(err, "cannot eval for post", 10)
+		if n.Post != nil {
+			_, err = m.Evaluate(n.Post)
+			if err != nil {
+				return nil, errors.WrapPrefix(err, "cannot eval for post", 10)
+			}
 		}
 	}
 

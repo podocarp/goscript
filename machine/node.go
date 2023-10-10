@@ -19,6 +19,8 @@ type Node struct {
 	Elems []*Node
 
 	IsReturnValue bool
+	IsContinue    bool
+	IsBreak       bool
 }
 
 func arrToString(arr []*Node) string {
@@ -43,35 +45,46 @@ func arrToString(arr []*Node) string {
 
 func (n *Node) String() string {
 	var val string
+	var t string
+
+	if n.Type != nil && n.Value != nil {
+		t = n.Type.String()
+		switch n.Type.Kind() {
+		case types.Array:
+			val = arrToString(n.Value.([]*Node))
+		case types.Float:
+			val = fmt.Sprint(n.Value)
+		case types.Int:
+			val = fmt.Sprint(n.Value)
+		case types.String:
+			val = strconv.Quote(fmt.Sprint(n.Value))
+		case types.Func:
+			val = "λ"
+		case types.Builtin:
+			val = "builtin"
+		default:
+			return "unknown type"
+		}
+	}
 	if n.Value == nil {
 		if n.Elems != nil {
-			return fmt.Sprintf("t(%s)", arrToString(n.Elems))
+			val = fmt.Sprintf("t(%s)", arrToString(n.Elems))
 		}
-		return "nil"
-	}
-	switch n.Type.Kind() {
-	case types.Array:
-		val = arrToString(n.Value.([]*Node))
-	case types.Float:
-		val = fmt.Sprint(n.Value)
-	case types.Int:
-		val = fmt.Sprint(n.Value)
-	case types.String:
-		val = strconv.Quote(fmt.Sprint(n.Value))
-	case types.Func:
-		val = "λ"
-	case types.Builtin:
-		val = "builtin"
-	default:
-		return "unknown type"
 	}
 
 	if n.IsReturnValue {
 		val = val + "[r]"
 	}
+	if n.IsContinue {
+		val = val + "[c]"
+	}
+	if n.IsBreak {
+		val = val + "[b]"
+	}
+
 	return fmt.Sprintf(
 		"Node(%s) %s",
-		n.Type.String(),
+		t,
 		val,
 	)
 }

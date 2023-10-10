@@ -20,7 +20,7 @@
             "cwd": "${workspaceFolder}",
             "program": "./tests/",
             "args": [
-                "-test.run=TestMultiAssign"
+                "-test.run=TestArrayAppendMultiD"
             ]
         }
     ]

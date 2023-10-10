@@ -33,10 +33,43 @@ func TestLoopsBasic(t *testing.T) {
 	res, err = m.ParseAndEval(stmt)
 	require.Nil(t, err, err)
 	require.EqualValues(t, 46.0, res.Value)
+
+	stmt = `func(a, b) {
+		for i := 0; i < a; {
+			b = i
+			i++
+		}
+		return b
+	}( 10, 1 )
+	`
+	res, err = m.ParseAndEval(stmt)
+	require.Nil(t, err, err)
+	require.EqualValues(t, 9, res.Value)
+}
+
+func TestLoopsContinue(t *testing.T) {
+	m := machine.NewMachine(machine.MachineOptSetDebug)
+
+	stmt := `
+	func (A, B int) {
+		for i := 0; i < B; i++ {
+			if i > 4 {
+				if i % 2 == 0 {
+					continue
+				}
+			}
+			A += i
+		}
+		return A
+	} ( 1 , 10)
+	`
+	res, err := m.ParseAndEval(stmt)
+	require.Nil(t, err, err)
+	require.EqualValues(t, 32, res.Value)
 }
 
 func TestLoopsRangeArray(t *testing.T) {
-	m := machine.NewMachine(machine.MachineOptSetDebug)
+	m := machine.NewMachine()
 
 	// test range over array
 	stmt := `
