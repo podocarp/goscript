@@ -8,7 +8,7 @@ import (
 )
 
 func TestBasicArithmetic(t *testing.T) {
-	m := machine.NewMachine()
+	m := machine.NewMachine(machine.MachineOptSetDebug)
 	stmt := "3 + 4.2 * (5 - 2)"
 	val, err := m.ParseAndEval(stmt)
 	require.Nil(t, err, err)

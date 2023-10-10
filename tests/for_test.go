@@ -48,7 +48,7 @@ func TestLoopsBasic(t *testing.T) {
 }
 
 func TestLoopsContinue(t *testing.T) {
-	m := machine.NewMachine(machine.MachineOptSetDebug)
+	m := machine.NewMachine()
 
 	stmt := `
 	func (A, B int) {

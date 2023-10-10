@@ -52,17 +52,21 @@ func (m *Machine) ParseAndEval(stmt string) (*Node, error) {
 }
 
 func (m *Machine) Parse(stmt string) (ast.Node, error) {
-	res, err := parser.ParseExpr(stmt)
+	parsed, err := parser.ParseExpr(stmt)
 	if err != nil {
 		return nil, errors.WrapPrefix(err, "cannot parse", 10)
 	}
 
-	if m.debugFlag {
-		fs := token.NewFileSet()
-		ast.Print(fs, res)
+	err = m.Preprocess(parsed)
+	if err != nil {
+		return nil, errors.WrapPrefix(err, "cannot preprocess", 10)
 	}
 
-	return res, err
+	if m.debugFlag {
+		ast.Print(token.NewFileSet(), parsed)
+	}
+
+	return parsed, err
 }
 
 // AddToGlobalContext adds a variable to the global context. Similar to running

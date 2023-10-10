@@ -10,6 +10,8 @@
         buildInputs = with pkgs; [
           go_1_21
           gopls
+          pprof
+          graphviz
         ];
         hardeningDisable = [ "fortify" ];
       };

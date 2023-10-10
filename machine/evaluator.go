@@ -82,17 +82,14 @@ func (m *Machine) Evaluate(expr ast.Node) (*Node, error) {
 	return node, err
 }
 
-func (m *Machine) evalIdent(lit *ast.Ident) (*Node, error) {
-	switch lit.Name {
-	case "true":
-		return NewBoolNode(true), nil
-	case "false":
-		return NewBoolNode(false), nil
+func (m *Machine) evalIdent(expr *ast.Ident) (*Node, error) {
+	if expr.Obj != nil && expr.Obj.Data != nil {
+		return expr.Obj.Data.(*Node), nil
 	}
 
-	node := m.Context.Get(lit.Name)
+	node := m.Context.Get(expr.Name)
 	if node == nil {
-		return nil, errors.Errorf("cannot find identifier %s", lit.Name)
+		return nil, errors.Errorf("cannot find identifier %s", expr.Name)
 	}
 	return node, nil
 }
@@ -140,7 +137,7 @@ func (m *Machine) evalBlock(stmt *ast.BlockStmt) (*Node, error) {
 			if res.IsContinue {
 				break
 			}
-			if res.IsBreak{
+			if res.IsBreak {
 				break
 			}
 		}
@@ -249,13 +246,13 @@ func (m *Machine) evalDecl(n *ast.DeclStmt) (*Node, error) {
 	return res, nil
 }
 
-func (m *Machine) evalIndex(lit *ast.IndexExpr) (*Node, error) {
-	arrNode, err := m.Evaluate(lit.X)
+func (m *Machine) evalIndex(expr *ast.IndexExpr) (*Node, error) {
+	arrNode, err := m.Evaluate(expr.X)
 	if err != nil {
 		return nil, err
 	}
 	arr := arrNode.Value.([]*Node)
-	indexNode, err := m.Evaluate(lit.Index)
+	indexNode, err := m.Evaluate(expr.Index)
 	if err != nil {
 		return nil, err
 	}
@@ -507,46 +504,13 @@ func (m *Machine) evalFor(n *ast.ForStmt) (*Node, error) {
 	return res, nil
 }
 
-func flattenArgList(fieldList []*ast.Field) ([]*ast.Field, error) {
-	res := make([]*ast.Field, 0)
-	for _, field := range fieldList {
-		if field.Names == nil && field.Type == nil {
-			return nil, errors.New("field has undefined Names and Type")
-		}
-
-		if field.Names == nil {
-			// in this case the Type element is used to store the
-			// name of the field
-			name := field.Type.(*ast.Ident)
-			field.Names = []*ast.Ident{name}
-			res = append(res, field)
-			continue
-		}
-
-		if len(field.Names) <= 1 {
-			// it is already correct
-			res = append(res, field)
-			continue
-		}
-
-		for _, name := range field.Names {
-			newField := *field
-			newField.Names = []*ast.Ident{name}
-			res = append(res, &newField)
-		}
-	}
-
-	return res, nil
-}
-
 func (m *Machine) applyFunction(fun *Node, args []*Node) (*Node, error) {
 	m.Context = m.Context.NewChildContext("func block")
 	var err error
 
 	n := fun.Value.(*ast.FuncLit)
 	// populate arguments
-	params := n.Type.Params
-	fieldList, err := flattenArgList(params.List)
+	fieldList := n.Type.Params.List
 
 	if err != nil {
 		return nil, err
