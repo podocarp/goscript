@@ -210,20 +210,46 @@ func (m *Machine) evalAssign(stmt *ast.AssignStmt) (*Node, error) {
 		}
 
 		for i := range stmt.Lhs {
-			name := stmt.Lhs[i].(*ast.Ident).Name
-			var err error
-			if stmt.Tok == token.ASSIGN {
-				err = m.Context.Update(name, rhs[i])
-			} else {
-				err = m.Context.Set(name, rhs[i])
-			}
+			err := m.assignRhsToLhs(stmt.Lhs[i], rhs[i], stmt.Tok)
 			if err != nil {
-				return nil, err
+				return nil, errors.WrapPrefix(
+					err,
+					"cannot assign assignment",
+					10,
+				)
 			}
 		}
 	}
 
 	return nil, nil
+}
+
+func (m *Machine) assignRhsToLhs(lhs ast.Expr, rhs *Node, tok token.Token) error {
+	switch n := lhs.(type) {
+	case *ast.Ident:
+		name := n.Name
+		var err error
+		if tok == token.ASSIGN {
+			err = m.Context.Update(name, rhs)
+		} else {
+			err = m.Context.Set(name, rhs)
+		}
+		if err != nil {
+			return err
+		}
+	case *ast.IndexExpr:
+		indexNode, err := m.Evaluate(n.Index)
+		if err != nil {
+			return err
+		}
+		index, err := indexNode.ToInt()
+		arrNode, err := m.Evaluate(n.X)
+		arr := arrNode.Value.([]*Node)
+		arr[index] = rhs
+	default:
+		return errors.Errorf("unknown type %v", reflect.TypeOf(lhs))
+	}
+	return nil
 }
 
 func (m *Machine) evalDecl(n *ast.DeclStmt) (*Node, error) {
@@ -286,8 +312,23 @@ func stringToType(str string) (types.Type, error) {
 	}
 }
 
-func (m *Machine) evalArray(elementAstType ast.Node, elems []ast.Expr) (*Node, error) {
-	res := make([]*Node, 0, len(elems))
+func (m *Machine) evalArray(elementAstType ast.Node, elems []ast.Expr, lens ...int64) (*Node, error) {
+	var res []*Node
+
+	switch len(lens) {
+	case 0:
+		res = make([]*Node, 0, len(elems))
+	case 1:
+		res = make([]*Node, lens[0])
+	case 2:
+		res = make([]*Node, lens[0], lens[1])
+	default:
+		return nil, errors.Errorf(
+			"unsupported number of len arguments %d",
+			len(lens),
+		)
+	}
+
 	var elemType types.Type
 	var err error
 	switch n := elementAstType.(type) {

@@ -88,17 +88,54 @@ func Len(_ *Machine, a any) (*Node, error) {
 // make(t Type, size ...IntegerType) Type
 func Make(m *Machine, a any) (*Node, error) {
 	args := a.([]ast.Expr)
-	if len(args) > 1 {
-		return nil, errors.Errorf(
-			"`make` currently does not support capacity arguments",
-		)
-	}
 
 	typeInfo := args[0]
 	switch n := typeInfo.(type) {
 	case *ast.ArrayType:
-		return m.evalArray(n.Elt, []ast.Expr{})
+		switch len(args) {
+		case 1:
+			return m.evalArray(n.Elt, []ast.Expr{})
+		case 2:
+			sizeNode := args[1]
+
+			size, err := m.Evaluate(sizeNode)
+			if err != nil {
+				return nil, err
+			}
+			sizeInt, err := size.ToInt()
+			if err != nil {
+				return nil, err
+			}
+
+			return m.evalArray(n.Elt, []ast.Expr{}, sizeInt)
+		case 3:
+			defaultSize := args[1]
+			capacity := args[2]
+
+			size, err := m.Evaluate(defaultSize)
+			if err != nil {
+				return nil, err
+			}
+			sizeInt, err := size.ToInt()
+			if err != nil {
+				return nil, err
+			}
+
+			capacityNode, err := m.Evaluate(capacity)
+			if err != nil {
+				return nil, err
+			}
+			capInt, err := capacityNode.ToInt()
+			if err != nil {
+				return nil, err
+			}
+
+			return m.evalArray(n.Elt, []ast.Expr{}, sizeInt, capInt)
+		default:
+			return nil, errors.Errorf("wrong number of arguments %d to make", len(args))
+		}
 	default:
 		return nil, errors.Errorf("unsupported type %v for make", reflect.TypeOf(typeInfo))
 	}
+
 }

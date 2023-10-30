@@ -120,13 +120,11 @@ cases if you need more advanced control structures during computation.
 
 Only a few builtin functions are available.
 
-Those that work similar to golang:
+Those that work:
 - append
 - len
+- make
 
-Those with differences:
-- make – currently does not accept any capacity arguments. This means you can
-  only write `make([]float64)`.
 
 
 ## Missing features

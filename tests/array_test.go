@@ -31,6 +31,61 @@ func TestArrayDefine(t *testing.T) {
 	require.Equal(t, "2", res.Value, res)
 }
 
+func TestArrayIndex(t *testing.T) {
+	m := machine.NewMachine()
+
+	stmt := `func() {
+		c := []float64{1, 2, 3, 4, 5, 6}
+		res := 0
+		for i := range c {
+			res += c[i]
+		}
+		return res
+	}()
+	`
+	res, err := m.ParseAndEval(stmt)
+	require.Nil(t, err, err)
+	require.EqualValues(t, 21, res.Value)
+}
+
+func TestMultiDArrayLoop(t *testing.T) {
+	m := machine.NewMachine()
+	stmt := `
+		func (A, B [][]float64) [][]float64 {
+		res := make([][]float64, len(A))
+		for i := range A {
+			aT := A[i][0]
+			aV := A[i][1]
+			bT := B[i][0]
+			bV := B[i][1]
+
+			limit := 2
+			if aV < limit {
+				res[i] = []float64{ aT, aV + bV }
+			} else {
+				res[i] = []float64{ aT, bV }
+			}
+		}
+
+		return res
+	}`
+
+	res, err := m.ParseAndEval(stmt)
+	require.Nil(t, err, err)
+
+	val1, err := machine.ValueToNode([][]float64{{1, 1}, {2, 4}, {3, 8}})
+	require.Nil(t, err, err)
+	val2, err := machine.ValueToNode([][]float64{{10, 2}, {20, 3}, {30, 4}})
+	require.Nil(t, err, err)
+	ans, err := machine.ValueToNode([][]float64{{1, 3}, {2, 3}, {3, 4}})
+	require.Nil(t, err, err)
+
+	evalResult, err := m.CallFunction(res, []*machine.Node{val1, val2})
+	require.Nil(t, err, err)
+	require.EqualValues(t, ans.Value, evalResult.Value)
+
+}
+
 func TestArrayType(t *testing.T) {
 	m := machine.NewMachine()
 	var stmt string
@@ -105,6 +160,8 @@ func TestArrayMake(t *testing.T) {
 	res, err := m.ParseAndEval(stmt)
 	require.Nil(t, err, err)
 	require.EqualValues(t, []*machine.Node{}, res.Value)
+	expectedType := types.ArrayOf(types.FloatType)
+	require.True(t, res.Type.Equal(expectedType), res.Type)
 
 	stmt = `func() {
 		c := make([][]float64)
@@ -114,7 +171,29 @@ func TestArrayMake(t *testing.T) {
 	res, err = m.ParseAndEval(stmt)
 	require.Nil(t, err, err)
 	require.EqualValues(t, []*machine.Node{}, res.Value)
-	expectedType := types.ArrayOf(types.ArrayOf(types.FloatType))
+	expectedType = types.ArrayOf(types.ArrayOf(types.FloatType))
+	require.True(t, res.Type.Equal(expectedType), res.Type)
+
+	stmt = `func() {
+		c := make([]float64, 10)
+		return c
+	}()
+	`
+	res, err = m.ParseAndEval(stmt)
+	require.Nil(t, err, err)
+	require.EqualValues(t, make([]*machine.Node, 10), res.Value)
+	expectedType = types.ArrayOf(types.FloatType)
+	require.True(t, res.Type.Equal(expectedType), res.Type)
+
+	stmt = `func() {
+		c := make([]string, 2, 10)
+		return c
+	}()
+	`
+	res, err = m.ParseAndEval(stmt)
+	require.Nil(t, err, err)
+	require.EqualValues(t, make([]*machine.Node, 2, 10), res.Value)
+	expectedType = types.ArrayOf(types.StringType)
 	require.True(t, res.Type.Equal(expectedType), res.Type)
 }
 
