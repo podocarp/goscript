@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/podocarp/goscript/machine"
@@ -121,6 +122,28 @@ func TestFunctionReturn(t *testing.T) {
 	res, err := m.ParseAndEval(stmt)
 	assert.Nil(t, err, err)
 	assert.EqualValues(t, 6.0, res.Value)
+}
+
+// TestFunctionMultiReturn tests that multi return statements work as expected
+func TestFunctionMultiReturn(t *testing.T) {
+	m := machine.NewMachine()
+
+	stmt := `func(a) {
+		b := 0
+		for i:= 0; i < a; i++ {
+			b += i
+		}
+
+		return b, 1000
+	}(10)`
+	res, err := m.ParseAndEval(stmt)
+	assert.Nil(t, err, err)
+	val := res.NodeToValue()
+	assert.Equal(t, 2, val.Len())
+	first := val.Index(0).Interface().(reflect.Value).Int()
+	assert.EqualValues(t, 45, first)
+	second := val.Index(1).Interface().(reflect.Value).Int()
+	assert.EqualValues(t, 1000, second)
 }
 
 // TestRecursionBasic tests that recursion works

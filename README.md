@@ -68,6 +68,12 @@ func main() {
 
 To convert a value into a machine Node, you would use `machine.ValueToNode()`. To
 do the reverse, you would use `node.NodeToValue()`.
+`NodeToValue` returns the object as a `reflect.Value` struct.
+If your function returns multiple values, it is possible to extract each one
+like this:
+```
+val.Index(0).Interface().(reflect.Value).Int()
+```
 
 ## Comparisons with other solutions
 

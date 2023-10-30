@@ -47,7 +47,7 @@ func (n *Node) String() string {
 	var val string
 	var t string
 
-	if n.Type != nil && n.Value != nil {
+	if n.Type != nil {
 		t = n.Type.String()
 		switch n.Type.Kind() {
 		case types.Array:
@@ -62,24 +62,28 @@ func (n *Node) String() string {
 			val = "λ"
 		case types.Builtin:
 			val = "builtin"
+		case types.Packing:
+			var b strings.Builder
+			for i, elem := range n.Elems {
+				b.WriteString(arrToString([]*Node{elem}))
+				if i != len(n.Elems)-1 {
+					b.WriteString(", ")
+				}
+			}
+			val = b.String()
 		default:
 			return "unknown type"
 		}
 	}
-	if n.Value == nil {
-		if n.Elems != nil {
-			val = fmt.Sprintf("t(%s)", arrToString(n.Elems))
-		}
-	}
 
 	if n.IsReturnValue {
-		val = val + "[r]"
+		val = val + " ret"
 	}
 	if n.IsContinue {
-		val = val + "[c]"
+		val = val + " cont"
 	}
 	if n.IsBreak {
-		val = val + "[b]"
+		val = val + " brk"
 	}
 
 	return fmt.Sprintf(
@@ -137,6 +141,12 @@ func (n *Node) NodeToValue() reflect.Value {
 		return reflect.ValueOf(n.Value.(string))
 	case types.Uint:
 		return reflect.ValueOf(n.Value.(uint64))
+	case types.Packing:
+		values := make([]reflect.Value, len(n.Elems))
+		for i, elem := range n.Elems {
+			values[i] = elem.NodeToValue()
+		}
+		return reflect.ValueOf(values)
 	default:
 		return reflect.Value{}
 	}

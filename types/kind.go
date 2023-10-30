@@ -19,6 +19,8 @@ const (
 	Array
 	Func
 	Builtin
+	// Used for multiple value statements, like a, b := f()
+	Packing
 )
 
 var kindStr = []string{
@@ -32,6 +34,7 @@ var kindStr = []string{
 	Array:   "array",
 	Func:    "function",
 	Builtin: "builtin",
+	Packing: "packing",
 }
 
 func (k Kind) String() string {

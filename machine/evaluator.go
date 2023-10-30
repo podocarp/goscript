@@ -804,9 +804,11 @@ func (m *Machine) evalReturn(expr *ast.ReturnStmt) (*Node, error) {
 		node.IsReturnValue = true
 		return node, err
 	default:
-		node := &Node{}
-		node.IsReturnValue = true
-		node.Elems = make([]*Node, len(expr.Results))
+		node := &Node{
+			IsReturnValue: true,
+			Type:          types.LiteralOf(types.Packing),
+			Elems:         make([]*Node, len(expr.Results)),
+		}
 		for i := range expr.Results {
 			resultNode, err := m.Evaluate(expr.Results[i])
 			if err != nil {
